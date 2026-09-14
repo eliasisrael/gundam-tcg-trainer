@@ -4,7 +4,7 @@ import { applyAction, whoseDecision } from '../src/game/engine';
 import { aiNextAction } from '../src/game/ai';
 import type { GameState } from '../src/game/types';
 
-function runAI(s: GameState) { let g = 0; while (!s.winner && g++ < 500) { const who = s.pending ? s.pending.player : whoseDecision(s); if (!who || !s.players[who].isAI) break; const a = aiNextAction(s, who); if (!a) break; applyAction(s, a); } }
+function runAI(s: GameState) { let g = 0; while (!s.winner && g++ < 500) { const who = s.pending ? s.pending.player : whoseDecision(s); if (!who || !s.players[who].isAI) break; const a = aiNextAction(s, who); if (!a) break; applyAction(s, a.action); } }
 function pick(s: GameState, match: (label: string) => boolean) {
   const o = s.pending!.options.find(o => match(o.label));
   if (!o) throw new Error(`no option matching; had: ${s.pending!.options.map(o => o.label).join(' | ')}`);

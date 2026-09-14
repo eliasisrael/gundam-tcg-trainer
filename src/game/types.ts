@@ -130,7 +130,7 @@ export interface LogEntry {
   turn: number;
   player?: PlayerId;
   text: string;
-  kind: 'info' | 'play' | 'attack' | 'damage' | 'effect' | 'phase' | 'system' | 'coach';
+  kind: 'info' | 'play' | 'attack' | 'damage' | 'effect' | 'phase' | 'system' | 'coach' | 'ai';
 }
 
 export interface GameState {

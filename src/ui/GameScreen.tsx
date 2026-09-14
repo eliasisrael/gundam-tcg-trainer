@@ -21,53 +21,183 @@ export interface GameController {
   skills: SkillProgress;
   reviews: Tip[][];
   lastLogMark: number; // log index at the human's last action
+  /** The bot's latest move and its reasoning. */
+  speech: BotSpeech | null;
+  aiBusy: boolean;
+  speed: BotSpeed;
+  setSpeed: (s: BotSpeed) => void;
 }
 
-function runAI(s: GameState) {
+export type BotSpeed = 'slow' | 'normal' | 'fast' | 'instant';
+const SPEED_MS: Record<BotSpeed, number> = { slow: 1800, normal: 1000, fast: 450, instant: 0 };
+const SPEED_KEY = 'gcg-trainer-bot-speed';
+export function loadSpeed(): BotSpeed { try { return (localStorage.getItem(SPEED_KEY) as BotSpeed) || 'normal'; } catch { return 'normal'; } }
+
+export interface BotSpeech { turn: number; move: string; reason: string; at: number }
+
+/** Who has to decide right now, if it is a bot. */
+function aiToMove(s: GameState): PlayerId | null {
+  if (s.winner) return null;
+  const who = s.pending ? s.pending.player : whoseDecision(s);
+  return who && s.players[who].isAI ? who : null;
+}
+
+/** Apply every pending bot decision synchronously (instant mode, tests). */
+export function runAI(s: GameState) {
   let guard = 0;
-  while (!s.winner && guard++ < 500) {
-    const who = s.pending ? s.pending.player : whoseDecision(s);
-    if (!who || !s.players[who].isAI) break;
-    const a = aiNextAction(s, who);
-    if (!a) break;
-    applyAction(s, a);
+  while (guard++ < 500) {
+    const who = aiToMove(s);
+    if (!who) break;
+    const d = aiNextAction(s, who);
+    if (!d) break;
+    applyAction(s, d.action);
   }
 }
 
+function describeMove(s: GameState, a: Action): string {
+  const ps = s.players[a.player];
+  switch (a.type) {
+    case 'playCard': { const c = ps.hand.find(x => x.uid === a.uid); const d = c ? CARDS[c.defId] : null; return d ? (a.asPilot ? `Pairs ${d.pilotName} (${d.name})` : d.type === 'UNIT' ? `Deploys ${d.name}` : d.type === 'BASE' ? `Deploys Base ${d.name}` : d.type === 'PILOT' ? `Pairs ${d.name}` : `Plays ${d.name}`) : 'Plays a card'; }
+    case 'attack': { const u = ps.units.find(x => x.card.uid === a.attackerUid); const t = a.target === 'player' ? 'you' : (findUnitName(s, a.target) ?? 'a Unit'); return `${u ? unitName(u) : 'A Unit'} attacks ${t}`; }
+    case 'activateMain': return 'Activates an effect';
+    case 'endMain': return 'Ends turn';
+    case 'choose': { const o = s.pending?.options.find(o => o.id === a.optionId); return o ? `Chooses: ${o.label}` : 'Passes'; }
+    case 'mulligan': return a.redraw ? 'Redraws' : 'Keeps hand';
+    default: return '';
+  }
+}
+function findUnitName(s: GameState, uid: number) { for (const p of ['p1', 'p2'] as PlayerId[]) { const u = s.players[p].units.find(x => x.card.uid === uid); if (u) return unitName(u); } return null; }
+
 export function useGame(initial: () => GameState, me: PlayerId): GameController {
-  const [state, setState] = useState<GameState>(() => { const s = initial(); runAI(s); return s; });
+  const [speed, setSpeedState] = useState<BotSpeed>(loadSpeed);
+  const [state, setState] = useState<GameState>(() => { const s = initial(); if (SPEED_MS[loadSpeed()] === 0) runAI(s); return s; });
   const [history, setHistory] = useState<GameState[]>([]);
   const [skills, setSkills] = useState<SkillProgress>(loadSkills);
   const [reviews, setReviews] = useState<Tip[][]>([]);
   const [lastLogMark, setLastLogMark] = useState(0);
+  const [speech, setSpeech] = useState<BotSpeech | null>(null);
+  const setSpeed = useCallback((sp: BotSpeed) => { setSpeedState(sp); try { localStorage.setItem(SPEED_KEY, sp); } catch { /* ignore */ } }, []);
 
   const dispatchWith = useCallback((a: Action, followUp?: (s: GameState) => Action | null) => {
+    setSpeech(null);
     setState(prev => {
       const before = structuredClone(prev);
       const next = structuredClone(prev);
       if (a.type === 'endMain' && a.player === me) setReviews(r => [...r.slice(-5), reviewTurn(next, me)]);
       applyAction(next, a);
-      runAI(next);
+      if (SPEED_MS[speed] === 0) runAI(next);
       const f = followUp?.(next);
-      if (f) { applyAction(next, f); runAI(next); }
+      if (f) { applyAction(next, f); if (SPEED_MS[speed] === 0) runAI(next); }
       setSkills(sk => detectSkills(before, next, me, sk));
       setHistory(h => [...h.slice(-30), before]);
       setLastLogMark(before.log.length);
       return next;
     });
-  }, [me]);
+  }, [me, speed]);
   const dispatch = useCallback((a: Action) => dispatchWith(a), [dispatchWith]);
+
+  // Bot stepper: one visible move at a time, with its reasoning.
+  const aiBusy = aiToMove(state) !== null;
+  useEffect(() => {
+    const who = aiToMove(state);
+    if (!who) return;
+    const ms = SPEED_MS[speed];
+    const step = () => setState(prev => {
+      const w = aiToMove(prev);
+      if (!w) return prev;
+      const next = structuredClone(prev);
+      const d = aiNextAction(next, w);
+      if (!d) return prev;
+      const move = describeMove(next, d.action);
+      applyAction(next, d.action);
+      if (ms === 0) runAI(next);
+      else if (d.action.type !== 'choose' || !move.startsWith('Chooses: Keep') ) setSpeech({ turn: next.turn, move, reason: d.reason, at: Date.now() });
+      setSkills(sk => detectSkills(prev, next, me, sk));
+      return next;
+    });
+    if (ms === 0) { step(); return; }
+    // First move of a bot turn gets a short "thinking" pause; choices resolve faster than main-phase plays.
+    const delay = state.pending ? Math.min(ms, 700) : ms;
+    const t = setTimeout(step, delay);
+    return () => clearTimeout(t);
+  }, [state, speed, me]);
 
   const undo = useCallback(() => {
     setHistory(h => {
       if (!h.length) return h;
       const prev = h[h.length - 1];
       setState(prev);
+      setSpeech(null);
       return h.slice(0, -1);
     });
   }, []);
 
-  return { state, me, dispatch, dispatchWith, undo, canUndo: history.length > 0, skills, reviews, lastLogMark };
+  return { state, me, dispatch, dispatchWith, undo, canUndo: history.length > 0 && !aiBusy, skills, reviews, lastLogMark, speech, aiBusy, speed, setSpeed };
+}
+
+// ---------- visual effects: diff consecutive states ----------
+
+export interface Toast { id: number; text: string; kind: 'damage' | 'destroy' | 'shield' | 'good' | 'info' | 'win' }
+export interface Fx {
+  enter: Set<number>;          // unit uids that just appeared
+  handEnter: Set<number>;      // hand card uids that just arrived
+  hit: Map<number, number>;    // unit uid -> damage taken this step
+  acted: Set<number>;          // unit uids that just rested (attacked / blocked)
+  destroyed: { owner: PlayerId; unit: UnitState }[]; // units that left the battle area (ghosts for the exit animation)
+  baseHit: Set<PlayerId>;
+  shieldHit: Set<PlayerId>;
+  toasts: Toast[];
+}
+const EMPTY_FX: Fx = { enter: new Set(), handEnter: new Set(), hit: new Map(), acted: new Set(), destroyed: [], baseHit: new Set(), shieldHit: new Set(), toasts: [] };
+let toastSeq = 1;
+
+function diffFx(prev: GameState, next: GameState): Fx {
+  const fx: Fx = { enter: new Set(), handEnter: new Set(), hit: new Map(), acted: new Set(), destroyed: [], baseHit: new Set(), shieldHit: new Set(), toasts: [] };
+  for (const p of ['p1', 'p2'] as PlayerId[]) {
+    const a = prev.players[p], b = next.players[p];
+    const oldHand = new Set(a.hand.map(c => c.uid));
+    for (const c of b.hand) if (!oldHand.has(c.uid)) fx.handEnter.add(c.uid);
+    const before = new Map(a.units.map(u => [u.card.uid, u]));
+    const after = new Set(b.units.map(u => u.card.uid));
+    for (const u of a.units) if (!after.has(u.card.uid)) fx.destroyed.push({ owner: p, unit: u });
+    for (const u of b.units) {
+      const old = before.get(u.card.uid);
+      if (!old) fx.enter.add(u.card.uid);
+      else {
+        if (u.damage > old.damage) fx.hit.set(u.card.uid, u.damage - old.damage);
+        if (u.rested && !old.rested) fx.acted.add(u.card.uid);
+      }
+    }
+    if (a.base && b.base && a.base.card.uid === b.base.card.uid && b.base.damage > a.base.damage) fx.baseHit.add(p);
+    if (a.base && !b.base) fx.baseHit.add(p);
+    if (b.shields.length < a.shields.length) fx.shieldHit.add(p);
+  }
+  const newLogs = next.log.slice(prev.log.length);
+  for (const l of newLogs) {
+    if (l.kind === 'damage' && /is destroyed|destroys a Shield/.test(l.text)) fx.toasts.push({ id: toastSeq++, text: l.text.replace(/\. \(\d+ Shields? left\)$/, ''), kind: /Shield/.test(l.text) ? 'shield' : 'destroy' });
+    else if (l.kind === 'damage' && /deals \d+ damage to/.test(l.text) && /Base/.test(l.text)) fx.toasts.push({ id: toastSeq++, text: l.text, kind: 'damage' });
+    else if (l.kind === 'effect' && /【Burst】|Breach|Link Unit/.test(l.text)) fx.toasts.push({ id: toastSeq++, text: l.text, kind: 'good' });
+    else if (l.kind === 'play' && /Link Unit!/.test(l.text)) fx.toasts.push({ id: toastSeq++, text: 'Link Unit!', kind: 'good' });
+    else if (l.kind === 'system' && /wins!/.test(l.text)) fx.toasts.push({ id: toastSeq++, text: l.text, kind: 'win' });
+  }
+  fx.toasts = fx.toasts.slice(-4);
+  return fx;
+}
+
+function useFx(state: GameState): Fx {
+  const prev = useRef(state);
+  const [fx, setFx] = useState<Fx>(EMPTY_FX);
+  useEffect(() => {
+    if (prev.current === state) return;
+    const d = diffFx(prev.current, state);
+    prev.current = state;
+    const any = d.enter.size || d.handEnter.size || d.destroyed.length || d.hit.size || d.acted.size || d.baseHit.size || d.shieldHit.size || d.toasts.length;
+    if (!any) return;
+    setFx(d);
+    const t = setTimeout(() => setFx(EMPTY_FX), 1600);
+    return () => clearTimeout(t);
+  }, [state]);
+  return fx;
 }
 
 // ---------- screen ----------
@@ -143,6 +273,7 @@ export function GameScreen({ game, highlightZones, sidePanel, showCoach = true, 
 
   const acts = activateOptions(state, me);
   const tips = coachTips(state, me);
+  const fx = useFx(state);
 
   // ---------- drag and drop ----------
   const [drag, setDrag] = useState<DragState | null>(null);
@@ -227,19 +358,33 @@ export function GameScreen({ game, highlightZones, sidePanel, showCoach = true, 
         <button className="btn ghost" onClick={onExit}>← Menu</button>
         <span className="title">{title ?? `${ps.name} (${state.players[me].id === 'p1' ? 'P1' : 'P2'}) vs ${state.players[other(me)].name}`}</span>
         <span className="spacer" />
+        <label className="speed muted small">Bot speed
+          <select value={game.speed} onChange={e => game.setSpeed(e.target.value as BotSpeed)}>
+            <option value="slow">Slow</option><option value="normal">Normal</option><option value="fast">Fast</option><option value="instant">Instant</option>
+          </select>
+        </label>
         <button className="btn ghost" onClick={game.undo} disabled={!game.canUndo} title="Undo your last action (training aid)">↶ Undo</button>
         {myTurn && <button className="btn primary" onClick={() => dispatch({ type: 'endMain', player: me })}>End Turn ▶</button>}
-        {!myTurn && !pending && !state.winner && state.active !== me && <button className="btn primary" onClick={() => dispatch({ type: 'choose', player: me, optionId: null })}>Continue ▶</button>}
+        {game.aiBusy && <span className="thinking">🤖 {state.players[other(me)].name} is moving<span className="dots" /></span>}
+        {!myTurn && !pending && !game.aiBusy && !state.winner && state.active !== me && <button className="btn primary" onClick={() => dispatch({ type: 'choose', player: me, optionId: null })}>Continue ▶</button>}
       </div>
 
       <div className="game-body">
         <div className="board-wrap">
           {pending && <PendingDialog game={game} />}
+          {game.speech && (game.aiBusy || Date.now() - game.speech.at < 8000 || state.active !== me) && (
+            <div className={`bot-bubble ${game.aiBusy ? 'live' : ''}`}>
+              <span className="bot-avatar">🤖</span>
+              <div><b>{state.players[other(me)].name}: {game.speech.move}</b><div className="muted">{game.speech.reason}</div></div>
+            </div>
+          )}
           <Board state={state} me={me} highlightZones={highlightZones} clickableHand={clickableHand} clickableUnits={clickableUnits}
             onHandClick={onHandClick} onUnitClick={onUnitClick} onPlayerClick={onPlayerClick} playerClickable={playerClickable}
             selectedUid={modal?.kind === 'attack' ? modal.uid : null}
             handDisabledReason={uid => { const c = ps.hand.find(x => x.uid === uid); if (!c) return; const r = canPlay(state, me, c); return r.ok ? undefined : r.reason; }}
-            drag={{ validDrops: drag?.active ? validDrops : new Set(), hoverDrop: drag?.active ? drag.hover : null, draggingUid: drag?.active ? drag.uid : null, onPointerDown: onCardPointerDown }} />
+            drag={{ validDrops: drag?.active ? validDrops : new Set(), hoverDrop: drag?.active ? drag.hover : null, draggingUid: drag?.active ? drag.uid : null, onPointerDown: onCardPointerDown }}
+            fx={fx} />
+          {fx.toasts.length > 0 && <div className="fx-feed">{fx.toasts.map(t => <div key={t.id} className={`toast ${t.kind}`}>{t.text}</div>)}</div>}
           {dragGhost && <div className="drag-ghost" style={{ left: drag!.x, top: drag!.y }}>{dragGhost}</div>}
           {dragHint && <div className="drag-hint">{dragHint}</div>}
 
@@ -401,7 +546,7 @@ export function LogPanel({ state, mark, me, compact }: { state: GameState; mark:
   const offset = state.log.length - entries.length;
   return (
     <div className={`log ${compact ? 'compact' : ''}`} ref={ref}>
-      {entries.map((l, i) => <div key={i + offset} className={`log-line ${l.kind} ${i + offset >= mark ? 'new' : ''} ${l.player === me ? 'mine' : l.player ? 'theirs' : ''}`}>{l.text}</div>)}
+      {entries.map((l, i) => <div key={i + offset} className={`log-line ${l.kind} ${i + offset >= mark ? 'new' : ''} ${l.player === me ? 'mine' : l.player ? 'theirs' : ''}`}>{l.kind === 'ai' ? '🤖 ' : ''}{l.text}</div>)}
     </div>
   );
 }

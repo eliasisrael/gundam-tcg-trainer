@@ -10,6 +10,8 @@ Not affiliated with or endorsed by Bandai. Card names and text are Bandai's prop
 - **Practice**: full games against a heuristic bot using the ST01 (Heroic Beginnings) and ST02 (Wings of Advance) starter decks. The Coach panel comments on the live position: lethal checks, free kills, missed links, unspent Resources, dangerous blockers, burst risk. Each End Turn produces a review of what you missed. Undo is available as a training aid.
 - **Drills & Glossary**: ten-question rules drills and a glossary of every keyword and timing icon.
 - **Skill tracker**: records the first time you demonstrate each mechanic (link unit, blocker, action-step command, burst, etc.).
+- **Visible opponent**: the Trainer Bot plays one move at a time (speed: slow / normal / fast / instant) with a speech bubble giving its reasoning for each move, block, and action-step play. Its reasoning is also written to the log.
+- **Animations**: deploy pop-in, attack lunge, hit shake with floating damage numbers, destruction fade, shield-break flash, and event toasts for kills, shields, bursts, and links.
 - **Drag and drop**: drag a Unit from hand into your Battle Area, a Base onto your Base slot, a Pilot onto a Unit, a Command onto its target, or a Unit onto an enemy Unit / their Shield Area to attack. Clicking still works everywhere (a click opens the card's action sheet). Pointer events, so it works with mouse and touch.
 - **Board layout** follows the official play sheet: Shield Area (Base + Shields) in the left column, Battle Area centre, Deck top-right, Resource Deck + Resource Area in front, Trash bottom-right; the opponent's side is rotated 180°.
 

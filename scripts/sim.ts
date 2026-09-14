@@ -13,8 +13,9 @@ for (let g = 0; g < games; g++) {
     while (!s.winner && steps < 5000) {
       const who: PlayerId | null = s.pending ? s.pending.player : whoseDecision(s);
       if (!who) { stuck++; console.log('STUCK (no decision)', g, s.phase, s.turn, JSON.stringify(s.battle)); break; }
-      const a = aiNextAction(s, who);
-      if (!a) { stuck++; console.log('STUCK (no action)', g, s.phase, s.turn, s.pending?.kind); break; }
+      const dec = aiNextAction(s, who);
+      if (!dec) { stuck++; console.log('STUCK (no action)', g, s.phase, s.turn, s.pending?.kind); break; }
+      const a = dec.action;
       const before = JSON.stringify([s.turn, s.phase, s.pending?.kind, s.battle?.step, s.players.p1.hand.length, s.players.p2.hand.length]);
       applyAction(s, a);
       steps++;

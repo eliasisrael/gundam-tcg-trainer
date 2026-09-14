@@ -32,10 +32,10 @@ export interface DragProps {
   dropId?: string;
 }
 
-export function HandCard({ card, onClick, selected, disabled, reason, drag }: { card: CardInstance; onClick?: () => void; selected?: boolean; disabled?: boolean; reason?: string; drag?: DragProps }) {
+export function HandCard({ card, onClick, selected, disabled, reason, drag, anim }: { card: CardInstance; onClick?: () => void; selected?: boolean; disabled?: boolean; reason?: string; drag?: DragProps; anim?: string }) {
   const d = CARDS[card.defId];
   return (
-    <button className={`card hand-card type-${d.type.toLowerCase()} ${selected ? 'selected' : ''} ${disabled ? 'disabled' : ''} ${drag?.dragging ? 'dragging' : ''} ${!disabled && drag?.onPointerDown ? 'draggable' : ''}`} style={{ '--c': COLOR[d.color] } as React.CSSProperties} onClick={onClick} onPointerDown={disabled ? undefined : drag?.onPointerDown} title={disabled && reason ? reason : d.text}>
+    <button className={`card hand-card type-${d.type.toLowerCase()} ${selected ? 'selected' : ''} ${disabled ? 'disabled' : ''} ${drag?.dragging ? 'dragging' : ''} ${!disabled && drag?.onPointerDown ? 'draggable' : ''} ${anim ?? ''}`} style={{ '--c': COLOR[d.color] } as React.CSSProperties} onClick={onClick} onPointerDown={disabled ? undefined : drag?.onPointerDown} title={disabled && reason ? reason : d.text}>
       <div className="card-head">
         <span className="lv">Lv.{d.level}</span>
         <span className="cost">{d.cost}</span>
@@ -50,14 +50,14 @@ export function HandCard({ card, onClick, selected, disabled, reason, drag }: { 
   );
 }
 
-export function UnitCard({ state, unit, owner, onClick, selected, highlight: hl, canAct, dim, drag }: { state: GameState; unit: UnitState; owner: PlayerId; onClick?: () => void; selected?: boolean; highlight?: boolean; canAct?: boolean; dim?: boolean; drag?: DragProps }) {
+export function UnitCard({ state, unit, owner, onClick, selected, highlight: hl, canAct, dim, drag, anim, dmg }: { state: GameState; unit: UnitState; owner: PlayerId; onClick?: () => void; selected?: boolean; highlight?: boolean; canAct?: boolean; dim?: boolean; drag?: DragProps; anim?: string; dmg?: number }) {
   const d = unit.card.token ? undefined : CARDS[unit.card.defId];
   const ap = unitAp(state, unit, owner), hp = unitHp(unit), max = unitMaxHp(unit);
   const kw = unitKeywords(unit);
   const baseAp = unit.card.token ? unit.card.token.ap : (d?.ap ?? 0);
   const kws = [kw.repair && `Repair ${kw.repair}`, kw.breach && `Breach ${kw.breach}`, kw.blocker && 'Blocker', kw.firstStrike && 'First Strike', kw.highManeuver && 'High-Maneuver'].filter(Boolean) as string[];
   return (
-    <button className={`card unit ${unit.rested ? 'rested' : ''} ${selected ? 'selected' : ''} ${hl ? 'highlight' : ''} ${canAct ? 'can-act' : ''} ${dim ? 'dim' : ''} ${unit.card.token ? 'token' : ''} ${drag?.dragging ? 'dragging' : ''} ${canAct && drag?.onPointerDown ? 'draggable' : ''} ${drag?.drop ? 'drop-' + drag.drop : ''}`}
+    <button className={`card unit ${unit.rested ? 'rested' : ''} ${selected ? 'selected' : ''} ${hl ? 'highlight' : ''} ${canAct ? 'can-act' : ''} ${dim ? 'dim' : ''} ${unit.card.token ? 'token' : ''} ${drag?.dragging ? 'dragging' : ''} ${canAct && drag?.onPointerDown ? 'draggable' : ''} ${drag?.drop ? 'drop-' + drag.drop : ''} ${anim ?? ''}`}
       data-drop={drag?.dropId} style={{ '--c': d ? COLOR[d.color] : '#666' } as React.CSSProperties} onClick={onClick} onPointerDown={canAct ? drag?.onPointerDown : undefined} title={d?.text}>
       <div className="card-head"><span className="lv">{unit.card.token ? 'Token' : `Lv.${unitLevel(unit)}`}</span>{unit.rested && <span className="badge">Rested</span>}</div>
       <div className="card-name">{cardName(unit.card)}</div>
@@ -65,14 +65,15 @@ export function UnitCard({ state, unit, owner, onClick, selected, highlight: hl,
       {kws.length > 0 && <div className="card-kws">{kws.map(k => <span key={k} className="kw-keyword">&lt;{k}&gt;</span>)}</div>}
       {unit.pilot && <div className={`pilot-tag ${isLinked(unit) ? 'linked' : ''}`}>{isLinked(unit) ? '⛓ ' : '👤 '}{pilotName(unit.pilot)}</div>}
       {unit.deployedTurn === state.turn && state.active === owner && !isLinked(unit) && <div className="sick">deployed this turn</div>}
+      {dmg ? <span className="dmg-float">-{dmg}</span> : null}
     </button>
   );
 }
 
-export function BaseCard({ base, onClick, highlight: hl, drop, dropId }: { base: BaseState; onClick?: () => void; highlight?: boolean; drop?: 'ok' | 'hover'; dropId?: string }) {
+export function BaseCard({ base, onClick, highlight: hl, drop, dropId, anim }: { base: BaseState; onClick?: () => void; highlight?: boolean; drop?: 'ok' | 'hover'; dropId?: string; anim?: string }) {
   const d = base.card.token ? undefined : CARDS[base.card.defId];
   return (
-    <button className={`card base ${base.rested ? 'rested' : ''} ${hl ? 'highlight' : ''} ${base.isEx ? 'token' : ''} ${drop ? 'drop-' + drop : ''}`} data-drop={dropId} style={{ '--c': d ? COLOR[d.color] : '#666' } as React.CSSProperties} onClick={onClick} title={d?.text}>
+    <button className={`card base ${base.rested ? 'rested' : ''} ${hl ? 'highlight' : ''} ${base.isEx ? 'token' : ''} ${drop ? 'drop-' + drop : ''} ${anim ?? ''}`} data-drop={dropId} style={{ '--c': d ? COLOR[d.color] : '#666' } as React.CSSProperties} onClick={onClick} title={d?.text}>
       <div className="card-head"><span className="lv">BASE</span>{base.rested && <span className="badge">Rested</span>}</div>
       <div className="card-name">{cardName(base.card)}</div>
       <div className="card-stats big"><span className={base.damage ? 'hurt' : ''}>{baseHp(base)}/{baseMaxHp(base)} HP</span></div>

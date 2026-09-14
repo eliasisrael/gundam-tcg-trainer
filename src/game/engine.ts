@@ -852,7 +852,8 @@ function continueBattle(state: GameState) {
     if (blockers.length && !kw.highManeuver) {
       if (state.players[defender].isAI) {
         const pick = aiBlockDecision(state, defender, atk.unit, blockers);
-        if (pick) doBlock(state, defender, pick);
+        log(state, pick.unit ? `Blocks with ${unitName(pick.unit)}: ${pick.reason}` : `Doesn't block: ${pick.reason}`, 'ai', defender);
+        if (pick.unit) doBlock(state, defender, pick.unit);
       } else {
         const tgtLabel = b.target === 'player' ? 'you' : unitName(findUnit(state, b.target)!.unit);
         pushChoice(state, {
@@ -891,7 +892,7 @@ function runActionStep(state: GameState): boolean {
     if (playable.length === 0) { b.passes++; b.actor = other(p); continue; }
     if (ps.isAI) {
       const pick = aiActionDecision(state, p, playable);
-      if (pick) { playActionCommand(state, p, pick.uid); b.passes = 0; } else b.passes++;
+      if (pick) { log(state, `Plays ${CARDS[pick.card.defId].name} in the action step: ${pick.reason}`, 'ai', p); playActionCommand(state, p, pick.card.uid); b.passes = 0; } else b.passes++;
       b.actor = other(p);
       continue;
     }
@@ -1002,52 +1003,46 @@ function endBattle(state: GameState) {
 
 // ---------- AI micro-decisions used inside the engine ----------
 
-function aiBlockDecision(state: GameState, defender: PlayerId, attacker: UnitState, blockers: UnitState[]): UnitState | null {
+function aiBlockDecision(state: GameState, defender: PlayerId, attacker: UnitState, blockers: UnitState[]): { unit: UnitState | null; reason: string } {
   const b = state.battle!;
   const ps = state.players[defender];
   const atkAp = unitAp(state, attacker, other(defender));
   const atkHp = unitHp(attacker);
+  const aName = unitName(attacker);
   // Blockers that kill the attacker and survive: always
   const heroic = blockers.filter(bl => unitAp(state, bl, defender) >= atkHp && unitHp(bl) > atkAp);
-  if (heroic.length) return heroic[0];
+  if (heroic.length) return { unit: heroic[0], reason: `it destroys ${aName} (${atkHp} HP) and survives its ${atkAp} AP.` };
   if (b.target === 'player') {
     const shieldsLeft = ps.shields.length + (ps.base ? 1 : 0);
-    // Protect when low on shields, or when a cheap blocker trades into the attacker
     const trade = blockers.filter(bl => unitAp(state, bl, defender) >= atkHp);
-    if (trade.length) return trade[0];
-    if (shieldsLeft <= 2) return [...blockers].sort((a, b2) => unitHp(a) - unitHp(b2))[0];
-    return null;
+    if (trade.length) return { unit: trade[0], reason: `it trades with ${aName}, and a Unit for a Unit is better than losing a Shield.` };
+    if (shieldsLeft <= 2) return { unit: [...blockers].sort((a, b2) => unitHp(a) - unitHp(b2))[0], reason: `I only have ${shieldsLeft} card(s) left in my shield area, so I must buy time.` };
+    return { unit: null, reason: `blocking would just lose the Blocker; with ${ps.shields.length} Shields I can afford to take this hit.` };
   }
-  // Protect a valuable unit that would die
   const tgt = findUnit(state, b.target)!.unit;
   if (unitHp(tgt) <= atkAp && (tgt.pilot || unitLevel(tgt) >= 4)) {
-    const cheap = [...blockers].sort((a, b2) => unitLevel(a) - unitLevel(b2))[0];
-    return cheap;
+    return { unit: [...blockers].sort((a, b2) => unitLevel(a) - unitLevel(b2))[0], reason: `${unitName(tgt)} would die, and it is worth more than my cheapest Blocker.` };
   }
-  return null;
+  return { unit: null, reason: unitHp(tgt) > atkAp ? `${unitName(tgt)} survives the hit anyway.` : `${unitName(tgt)} is not worth sacrificing a Blocker for.` };
 }
 
-function aiActionDecision(state: GameState, p: PlayerId, playable: CardInstance[]): CardInstance | null {
+function aiActionDecision(state: GameState, p: PlayerId, playable: CardInstance[]): { card: CardInstance; reason: string } | null {
   const b = state.battle!;
   const atk = findUnit(state, b.attackerUid);
   if (!atk) return null;
   const defending = atk.owner !== p;
   for (const c of playable) {
     const d = CARDS[c.defId];
-    if (d.id === 'ST02-013' && defending) return c; // Peaceful Timbre: blank the shield hit
+    if (d.id === 'ST02-013' && defending) return { card: c, reason: `${unitName(atk.unit)} is Lv.${unitLevel(atk.unit)}, so Peaceful Timbre blanks this hit on my shield area.` };
     if (d.id === 'ST01-014') {
-      // Unforeseen Incident: AP-3 on the attacker if it saves our unit, or on the target if it saves ours when attacking
       if (defending && b.target !== 'player') {
         const t = findUnit(state, b.target)!.unit;
-        if (unitHp(t) <= unitAp(state, atk.unit, atk.owner) && unitHp(t) > unitAp(state, atk.unit, atk.owner) - 3) return c;
+        if (unitHp(t) <= unitAp(state, atk.unit, atk.owner) && unitHp(t) > unitAp(state, atk.unit, atk.owner) - 3) return { card: c, reason: `AP-3 on ${unitName(atk.unit)} means ${unitName(t)} survives the battle.` };
       }
       if (!defending && b.target !== 'player') {
         const t = findUnit(state, b.target)!.unit;
-        if (unitHp(atk.unit) <= unitAp(state, t, other(p)) && unitHp(atk.unit) > unitAp(state, t, other(p)) - 3) return c;
+        if (unitHp(atk.unit) <= unitAp(state, t, other(p)) && unitHp(atk.unit) > unitAp(state, t, other(p)) - 3) return { card: c, reason: `AP-3 on ${unitName(t)} keeps my attacker alive through the trade.` };
       }
-    }
-    if (d.id === 'ST02-014' && defending && b.target === 'player') {
-      // Siege Ploy on attacker doesn't stop the attack; skip.
     }
   }
   return null;
