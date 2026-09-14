@@ -22,6 +22,13 @@ export interface BoardProps {
   onPlayerClick?: (p: PlayerId) => void;
   playerClickable?: boolean;
   handDisabledReason?: (uid: number) => string | undefined;
+  /** Drag-and-drop wiring (optional). */
+  drag?: {
+    validDrops: Set<string>;
+    hoverDrop: string | null;
+    draggingUid: number | null;
+    onPointerDown: (kind: 'hand' | 'unit', uid: number, e: React.PointerEvent<HTMLButtonElement>) => void;
+  };
 }
 
 export function Board(p: BoardProps) {
@@ -30,6 +37,10 @@ export function Board(p: BoardProps) {
   const hz = new Set(p.highlightZones ?? []);
   const z = (name: Zone, extra = '') => `zone ${extra} ${hz.has(name) ? 'hl' : ''}`;
   const meS = state.players[me], opS = state.players[op];
+  const dg = p.drag;
+  const dropCls = (id: string) => dg ? (dg.hoverDrop === id ? 'drop-hover' : dg.validDrops.has(id) ? 'drop-ok' : '') : '';
+  const dropState = (id: string): 'ok' | 'hover' | undefined => dg ? (dg.hoverDrop === id ? 'hover' : dg.validDrops.has(id) ? 'ok' : undefined) : undefined;
+  const unitDrag = (u: UnitState) => dg ? { onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => dg.onPointerDown('unit', u.card.uid, e), dragging: dg.draggingUid === u.card.uid, drop: dropState(`unit:${u.card.uid}`), dropId: `unit:${u.card.uid}` } : undefined;
 
   return (
     <div className="board mat">
@@ -56,7 +67,7 @@ export function Board(p: BoardProps) {
           </div>
         </div>
         {/* shield column (opponent's left = our right) */}
-        <div className={z('opp-shields', 'shield-col opp-shield-col')} onClick={() => p.playerClickable && p.onPlayerClick?.(op)}>
+        <div className={z('opp-shields', `shield-col opp-shield-col ${dropCls('opp-player')}`)} data-drop="opp-player" onClick={() => p.playerClickable && p.onPlayerClick?.(op)}>
           <div className="zone-label">Shield Area</div>
           <div className={`shield-stack vertical ${p.playerClickable ? 'clickable' : ''}`}>
             {opS.shields.map(s => <span key={s.uid} className="card-back shield" />)}
@@ -65,7 +76,7 @@ export function Board(p: BoardProps) {
           <div className="zone-label">Shields · {opS.shields.length}</div>
           <div className={z('opp-base', 'base-slot')}>
             <div className="zone-label">Base</div>
-            {opS.base ? <BaseCard base={opS.base} onClick={() => p.playerClickable && p.onPlayerClick?.(op)} highlight={p.playerClickable} /> : <div className="empty-slot">no Base</div>}
+            {opS.base ? <BaseCard base={opS.base} onClick={() => p.playerClickable && p.onPlayerClick?.(op)} highlight={p.playerClickable} dropId="opp-player" /> : <div className="empty-slot">no Base</div>}
           </div>
         </div>
         {/* near row: deck | battle area */}
@@ -76,7 +87,7 @@ export function Board(p: BoardProps) {
         <div className={z('opp-units', 'battle')}>
           <div className="zone-label">Battle Area · {opS.units.length}/6</div>
           <div className="units">
-            {opS.units.map(u => <UnitCard key={u.card.uid} state={state} unit={u} owner={op} onClick={() => p.onUnitClick?.(u, op)} highlight={p.clickableUnits?.has(u.card.uid)} dim={p.clickableUnits && !p.clickableUnits.has(u.card.uid) && p.selectedUid != null} />)}
+            {opS.units.map(u => <UnitCard key={u.card.uid} state={state} unit={u} owner={op} onClick={() => p.onUnitClick?.(u, op)} highlight={p.clickableUnits?.has(u.card.uid)} dim={p.clickableUnits && !p.clickableUnits.has(u.card.uid) && p.selectedUid != null} drag={unitDrag(u)} />)}
             {opS.units.length === 0 && <div className="empty-slot">no Units</div>}
           </div>
         </div>
@@ -90,9 +101,9 @@ export function Board(p: BoardProps) {
       <div className="sheet me">
         <div className={z('shields', 'shield-col my-shield-col')}>
           <div className="zone-label">Shield Area</div>
-          <div className={z('base', 'base-slot')}>
+          <div className={z('base', `base-slot ${dropCls('my-base')}`)} data-drop="my-base">
             <div className="zone-label">Base</div>
-            {meS.base ? <BaseCard base={meS.base} /> : <div className="empty-slot">no Base</div>}
+            {meS.base ? <BaseCard base={meS.base} dropId="my-base" /> : <div className="empty-slot">no Base</div>}
           </div>
           <div className="zone-label">Shields · {meS.shields.length}</div>
           <div className="shield-stack vertical">
@@ -100,10 +111,10 @@ export function Board(p: BoardProps) {
             {meS.shields.length === 0 && <span className="empty">no Shields!</span>}
           </div>
         </div>
-        <div className={z('units', 'battle')}>
+        <div className={z('units', `battle ${dropCls('my-battle')}`)} data-drop="my-battle">
           <div className="zone-label">Battle Area · {meS.units.length}/6</div>
           <div className="units">
-            {meS.units.map(u => <UnitCard key={u.card.uid} state={state} unit={u} owner={me} onClick={() => p.onUnitClick?.(u, me)} selected={p.selectedUid === u.card.uid} highlight={p.clickableUnits?.has(u.card.uid)} canAct={p.clickableUnits?.has(u.card.uid)} />)}
+            {meS.units.map(u => <UnitCard key={u.card.uid} state={state} unit={u} owner={me} onClick={() => p.onUnitClick?.(u, me)} selected={p.selectedUid === u.card.uid} highlight={p.clickableUnits?.has(u.card.uid)} canAct={p.clickableUnits?.has(u.card.uid)} drag={unitDrag(u)} />)}
             {meS.units.length === 0 && <div className="empty-slot">no Units yet</div>}
           </div>
         </div>
@@ -132,7 +143,7 @@ export function Board(p: BoardProps) {
         <div className="hand">
           {meS.hand.map(c => {
             const ok = p.clickableHand?.has(c.uid) ?? false;
-            return <HandCard key={c.uid} card={c} onClick={() => p.onHandClick?.(c.uid)} disabled={!ok} reason={p.handDisabledReason?.(c.uid)} />;
+            return <HandCard key={c.uid} card={c} onClick={() => p.onHandClick?.(c.uid)} disabled={!ok} reason={p.handDisabledReason?.(c.uid)} drag={dg ? { onPointerDown: e => dg.onPointerDown('hand', c.uid, e), dragging: dg.draggingUid === c.uid } : undefined} />;
           })}
           {meS.hand.length === 0 && <div className="empty-slot">empty</div>}
         </div>

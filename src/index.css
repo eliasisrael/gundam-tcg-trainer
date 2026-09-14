@@ -231,3 +231,14 @@ p { margin: .4em 0; }
 .glossary dt { font-weight: 600; color: var(--accent2); margin-top: 8px; }
 .glossary dd { margin: 0; color: #c3c9d4; font-size: 13px; }
 @media (max-width: 700px) { .glossary { columns: 1; } :root { --card-w: 100px; } }
+
+/* ---------- drag and drop ---------- */
+.card.draggable { cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+.card.dragging { opacity: .35; }
+.drop-ok { outline: 2px dashed var(--accent2); outline-offset: 3px; }
+.drop-ok.zone, .drop-ok.base-slot { background: rgba(76,194,255,.06); }
+.drop-hover { outline: 3px solid var(--accent); outline-offset: 3px; background: rgba(240,180,41,.12) !important; }
+.card.drop-hover { transform: scale(1.04); }
+.drag-ghost { position: fixed; z-index: 100; pointer-events: none; transform: translate(-50%, -60%) rotate(-3deg) scale(1.05); filter: drop-shadow(0 12px 24px rgba(0,0,0,.6)); }
+.drag-ghost .card { opacity: 1; }
+.drag-hint { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 101; pointer-events: none; background: #0f2a3a; border: 1px solid var(--accent2); border-radius: 999px; padding: 6px 14px; font-size: 13px; }
