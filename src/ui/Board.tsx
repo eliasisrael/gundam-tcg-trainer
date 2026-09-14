@@ -4,12 +4,17 @@ import { activeResources, other, playerLevel } from '../game/engine';
 import { BaseCard, HandCard, UnitCard } from './CardView';
 import type { Zone } from '../learn/lessons';
 
+// Layout follows the official play sheet. From each player's point of view:
+//   left column  = Shield Area (Base nearest the centre line, Shields stacked toward the player)
+//   centre       = Battle Area, with Resource Deck + Resource Area in front of it
+//   right column = Deck (far) and Trash (near)
+// The opponent's side is the same sheet rotated 180 degrees.
+
 export interface BoardProps {
   state: GameState;
   me: PlayerId;
   highlightZones?: Zone[];
   selectedUid?: number | null;
-  /** Units/hand cards that are valid click targets right now */
   clickableUnits?: Set<number>;
   clickableHand?: Set<number>;
   onUnitClick?: (u: UnitState, owner: PlayerId) => void;
@@ -23,90 +28,113 @@ export function Board(p: BoardProps) {
   const { state, me } = p;
   const op = other(me);
   const hz = new Set(p.highlightZones ?? []);
-  const z = (name: Zone) => (hz.has(name) ? 'zone hl' : 'zone');
+  const z = (name: Zone, extra = '') => `zone ${extra} ${hz.has(name) ? 'hl' : ''}`;
   const meS = state.players[me], opS = state.players[op];
 
   return (
-    <div className="board">
-      {/* Opponent side */}
-      <div className="side opp">
-        <div className="side-row">
-          <div className={z('opp-hand')}>
-            <div className="zone-label">{opS.name}'s hand</div>
-            <div className="hand-backs">{opS.hand.map(c => <span key={c.uid} className="card-back" />)}</div>
+    <div className="board mat">
+      {/* ---------- Opponent side (rotated sheet) ---------- */}
+      <div className={z('opp-hand', 'opp-hand-row')}>
+        <span className="zone-label">{opS.name}'s hand · {opS.hand.length}</span>
+        <div className="hand-backs">{opS.hand.map(c => <span key={c.uid} className="card-back" />)}</div>
+      </div>
+
+      <div className="sheet opp">
+        {/* far row: trash | resource area + resource deck */}
+        <div className={z('trash', 'pile opp-trash')}>
+          <div className="zone-label">Trash</div>
+          <div className="deck-pile trash" title={opS.trash.map(c => CARDS[c.defId].name).join(', ')}>{opS.trash.length}</div>
+        </div>
+        <div className={z('opp-resources', 'resource-row')}>
+          <div className="res-deck">
+            <div className="zone-label">Resource Deck</div>
+            <div className="deck-pile small">{opS.resourceDeck}</div>
           </div>
-          <div className={z('opp-resources')}>
-            <div className="zone-label">Resources · Lv.{playerLevel(opS)} ({activeResources(opS)} active)</div>
+          <div className="res-area">
+            <div className="zone-label">Resource Area · Lv.{playerLevel(opS)} · {activeResources(opS)} active</div>
             <Resources ps={opS} />
           </div>
-          <div className="zone deck-zone">
-            <div className="zone-label">Deck</div>
-            <div className="deck-pile">{opS.deck.length}</div>
-            <div className="zone-label">Trash {opS.trash.length}</div>
-          </div>
         </div>
-        <div className="side-row">
-          <div className={z('opp-shields') + ' shield-zone'} onClick={() => p.playerClickable && p.onPlayerClick?.(op)}>
-            <div className="zone-label">Shields</div>
-            <div className={`shield-stack ${p.playerClickable ? 'clickable' : ''}`}>{opS.shields.map(s => <span key={s.uid} className="card-back shield" />)}{opS.shields.length === 0 && <span className="empty">none</span>}</div>
+        {/* shield column (opponent's left = our right) */}
+        <div className={z('opp-shields', 'shield-col opp-shield-col')} onClick={() => p.playerClickable && p.onPlayerClick?.(op)}>
+          <div className="zone-label">Shield Area</div>
+          <div className={`shield-stack vertical ${p.playerClickable ? 'clickable' : ''}`}>
+            {opS.shields.map(s => <span key={s.uid} className="card-back shield" />)}
+            {opS.shields.length === 0 && <span className="empty">no Shields</span>}
           </div>
-          <div className={z('opp-base')}>
+          <div className="zone-label">Shields · {opS.shields.length}</div>
+          <div className={z('opp-base', 'base-slot')}>
             <div className="zone-label">Base</div>
             {opS.base ? <BaseCard base={opS.base} onClick={() => p.playerClickable && p.onPlayerClick?.(op)} highlight={p.playerClickable} /> : <div className="empty-slot">no Base</div>}
           </div>
-          <div className={z('opp-units') + ' units-zone'}>
-            <div className="zone-label">{opS.name}'s Units ({opS.units.length}/6)</div>
-            <div className="units">
-              {opS.units.map(u => <UnitCard key={u.card.uid} state={state} unit={u} owner={op} onClick={() => p.onUnitClick?.(u, op)} highlight={p.clickableUnits?.has(u.card.uid)} dim={p.clickableUnits && !p.clickableUnits.has(u.card.uid) && p.selectedUid != null} />)}
-              {opS.units.length === 0 && <div className="empty-slot">no Units</div>}
-            </div>
+        </div>
+        {/* near row: deck | battle area */}
+        <div className={z('deck', 'pile opp-deck')}>
+          <div className="zone-label">Deck</div>
+          <div className="deck-pile">{opS.deck.length}</div>
+        </div>
+        <div className={z('opp-units', 'battle')}>
+          <div className="zone-label">Battle Area · {opS.units.length}/6</div>
+          <div className="units">
+            {opS.units.map(u => <UnitCard key={u.card.uid} state={state} unit={u} owner={op} onClick={() => p.onUnitClick?.(u, op)} highlight={p.clickableUnits?.has(u.card.uid)} dim={p.clickableUnits && !p.clickableUnits.has(u.card.uid) && p.selectedUid != null} />)}
+            {opS.units.length === 0 && <div className="empty-slot">no Units</div>}
           </div>
         </div>
       </div>
 
-      <div className={z('phase') + ' phase-bar'}>
+      <div className={z('phase', 'phase-bar')}>
         <PhaseBar state={state} me={me} />
       </div>
 
-      {/* My side */}
-      <div className="side me">
-        <div className="side-row">
-          <div className={z('units') + ' units-zone'}>
-            <div className="zone-label">Your Units ({meS.units.length}/6)</div>
-            <div className="units">
-              {meS.units.map(u => <UnitCard key={u.card.uid} state={state} unit={u} owner={me} onClick={() => p.onUnitClick?.(u, me)} selected={p.selectedUid === u.card.uid} highlight={p.clickableUnits?.has(u.card.uid)} canAct={p.clickableUnits?.has(u.card.uid)} />)}
-              {meS.units.length === 0 && <div className="empty-slot">no Units yet</div>}
-            </div>
-          </div>
-          <div className={z('base')}>
-            <div className="zone-label">Your Base</div>
+      {/* ---------- My side ---------- */}
+      <div className="sheet me">
+        <div className={z('shields', 'shield-col my-shield-col')}>
+          <div className="zone-label">Shield Area</div>
+          <div className={z('base', 'base-slot')}>
+            <div className="zone-label">Base</div>
             {meS.base ? <BaseCard base={meS.base} /> : <div className="empty-slot">no Base</div>}
           </div>
-          <div className={z('shields') + ' shield-zone'}>
-            <div className="zone-label">Your Shields</div>
-            <div className="shield-stack">{meS.shields.map(s => <span key={s.uid} className="card-back shield" />)}{meS.shields.length === 0 && <span className="empty">none!</span>}</div>
+          <div className="zone-label">Shields · {meS.shields.length}</div>
+          <div className="shield-stack vertical">
+            {meS.shields.map(s => <span key={s.uid} className="card-back shield" />)}
+            {meS.shields.length === 0 && <span className="empty">no Shields!</span>}
           </div>
         </div>
-        <div className="side-row">
-          <div className={z('deck') + ' deck-zone'}>
-            <div className="zone-label">Deck</div>
-            <div className="deck-pile">{meS.deck.length}</div>
-            <div className={z('trash') + ' zone-label'} title={meS.trash.map(c => CARDS[c.defId].name).join(', ')}>Trash {meS.trash.length}</div>
+        <div className={z('units', 'battle')}>
+          <div className="zone-label">Battle Area · {meS.units.length}/6</div>
+          <div className="units">
+            {meS.units.map(u => <UnitCard key={u.card.uid} state={state} unit={u} owner={me} onClick={() => p.onUnitClick?.(u, me)} selected={p.selectedUid === u.card.uid} highlight={p.clickableUnits?.has(u.card.uid)} canAct={p.clickableUnits?.has(u.card.uid)} />)}
+            {meS.units.length === 0 && <div className="empty-slot">no Units yet</div>}
           </div>
-          <div className={z('resources')}>
-            <div className="zone-label">Your Resources · Lv.{playerLevel(meS)} ({activeResources(meS)} active)</div>
+        </div>
+        <div className={z('deck', 'pile my-deck')}>
+          <div className="zone-label">Deck</div>
+          <div className="deck-pile">{meS.deck.length}</div>
+        </div>
+        <div className={z('resources', 'resource-row')}>
+          <div className={z('resourceDeck', 'res-deck')}>
+            <div className="zone-label">Resource Deck</div>
+            <div className="deck-pile small">{meS.resourceDeck}</div>
+          </div>
+          <div className="res-area">
+            <div className="zone-label">Resource Area · Lv.{playerLevel(meS)} · {activeResources(meS)} active</div>
             <Resources ps={meS} />
-            <div className={z('resourceDeck') + ' zone-label'}>Resource Deck: {meS.resourceDeck}</div>
           </div>
-          <div className={z('hand') + ' hand-zone'}>
-            <div className="zone-label">Your hand ({meS.hand.length})</div>
-            <div className="hand">
-              {meS.hand.map(c => {
-                const ok = p.clickableHand?.has(c.uid) ?? false;
-                return <HandCard key={c.uid} card={c} onClick={() => p.onHandClick?.(c.uid)} disabled={!ok} reason={p.handDisabledReason?.(c.uid)} />;
-              })}
-            </div>
-          </div>
+        </div>
+        <div className={z('trash', 'pile my-trash')}>
+          <div className="zone-label">Trash</div>
+          <div className="deck-pile trash" title={meS.trash.map(c => CARDS[c.defId].name).join(', ')}>{meS.trash.length}</div>
+        </div>
+      </div>
+
+      <div className={z('hand', 'hand-zone')}>
+        <div className="zone-label">Your hand · {meS.hand.length}</div>
+        <div className="hand">
+          {meS.hand.map(c => {
+            const ok = p.clickableHand?.has(c.uid) ?? false;
+            return <HandCard key={c.uid} card={c} onClick={() => p.onHandClick?.(c.uid)} disabled={!ok} reason={p.handDisabledReason?.(c.uid)} />;
+          })}
+          {meS.hand.length === 0 && <div className="empty-slot">empty</div>}
         </div>
       </div>
     </div>
