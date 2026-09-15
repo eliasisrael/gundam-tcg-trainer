@@ -41,6 +41,8 @@ npx tsx scripts/fetch-card-images.ts
 
 With the images present the board shows the printed cards with live AP/HP, Pilot and status overlays; without them (or with the "Card art" toggle off) it shows text cards. Do not publish the app with the images included.
 
+Reading cards: hover any card for a large preview with its full text and tip, click the magnifier on a card for a full-size inspector, use **Expand hand** to see your hand at full size (and play from there), and pick a card size (Small / Medium / Large) in the top bar.
+
 ## Run
 
 ```bash

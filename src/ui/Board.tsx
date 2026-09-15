@@ -22,6 +22,7 @@ export interface BoardProps {
   onPlayerClick?: (p: PlayerId) => void;
   playerClickable?: boolean;
   handDisabledReason?: (uid: number) => string | undefined;
+  onExpandHand?: () => void;
   /** Transient visual effects from the last state change. */
   fx?: import('./GameScreen').Fx;
   /** Drag-and-drop wiring (optional). */
@@ -145,7 +146,7 @@ export function Board(p: BoardProps) {
       </div>
 
       <div className={z('hand', 'hand-zone')}>
-        <div className="zone-label">Your hand · {meS.hand.length}</div>
+        <div className="zone-label hand-label">Your hand · {meS.hand.length}{p.onExpandHand && <button className="btn small ghost expand-hand" onClick={p.onExpandHand} title="See your hand at full size">⤢ Expand hand</button>}</div>
         <div className="hand">
           {meS.hand.map(c => {
             const ok = p.clickableHand?.has(c.uid) ?? false;

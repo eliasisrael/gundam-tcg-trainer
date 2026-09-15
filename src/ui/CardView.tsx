@@ -2,7 +2,16 @@ import type { CardInstance, UnitState, BaseState, PlayerId } from '../game/types
 import type { GameState } from '../game/types';
 import { CARDS } from '../game/cards';
 import { baseHp, baseMaxHp, cardName, isLinked, pilotName, unitAp, unitHp, unitKeywords, unitLevel, unitMaxHp } from '../game/engine';
-import { cardImage, isMissing, markMissing, useSettings } from './settings';
+import { cardImage, isMissing, markMissing, setPeek, useSettings } from './settings';
+
+/** Called when a card's magnifier is clicked: opens the full-size inspector. */
+export let openInspector: (defId: string) => void = () => {};
+export function setInspectorOpener(fn: (defId: string) => void) { openInspector = fn; }
+
+function Magnifier({ defId }: { defId: string }) {
+  return <span className="magnify" role="button" title="Inspect card" onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); openInspector(defId); }}>🔍</span>;
+}
+const peekProps = (defId: string) => ({ onPointerEnter: () => setPeek(defId), onPointerLeave: () => setPeek(null) });
 
 const COLOR: Record<string, string> = { Blue: '#2f6fd6', Green: '#2e9e5b', Red: '#d64a3a', White: '#8a8fa8', Purple: '#8c4ad6' };
 
@@ -48,7 +57,8 @@ export function HandCard({ card, onClick, selected, disabled, reason, drag, anim
   const d = CARDS[card.defId];
   const art = useArt(card.defId);
   return (
-    <button className={`card hand-card type-${d.type.toLowerCase()} ${art ? 'with-art' : ''} ${selected ? 'selected' : ''} ${disabled ? 'disabled' : ''} ${drag?.dragging ? 'dragging' : ''} ${!disabled && drag?.onPointerDown ? 'draggable' : ''} ${anim ?? ''}`} style={{ '--c': COLOR[d.color] } as React.CSSProperties} onClick={onClick} onPointerDown={disabled ? undefined : drag?.onPointerDown} title={disabled && reason ? `${d.name}: ${reason}` : `${d.name}\n${d.text}`}>
+    <button className={`card hand-card type-${d.type.toLowerCase()} ${art ? 'with-art' : ''} ${selected ? 'selected' : ''} ${disabled ? 'disabled' : ''} ${drag?.dragging ? 'dragging' : ''} ${!disabled && drag?.onPointerDown ? 'draggable' : ''} ${anim ?? ''}`} style={{ '--c': COLOR[d.color] } as React.CSSProperties} onClick={onClick} onPointerDown={disabled ? undefined : drag?.onPointerDown} title={disabled && reason ? `${d.name}: ${reason}` : d.name} {...peekProps(card.defId)}>
+      <Magnifier defId={card.defId} />
       {art ? <CardArt defId={card.defId} alt={d.name} /> : (
         <>
           <div className="card-head">
@@ -79,7 +89,8 @@ export function UnitCard({ state, unit, owner, onClick, selected, highlight: hl,
   const sick = unit.deployedTurn === state.turn && state.active === owner && !isLinked(unit);
   return (
     <button className={`card unit ${art ? 'with-art' : ''} ${unit.rested ? 'rested' : ''} ${selected ? 'selected' : ''} ${hl ? 'highlight' : ''} ${canAct ? 'can-act' : ''} ${dim ? 'dim' : ''} ${unit.card.token ? 'token' : ''} ${drag?.dragging ? 'dragging' : ''} ${canAct && drag?.onPointerDown ? 'draggable' : ''} ${drag?.drop ? 'drop-' + drag.drop : ''} ${anim ?? ''}`}
-      data-drop={drag?.dropId} style={{ '--c': d ? COLOR[d.color] : '#666' } as React.CSSProperties} onClick={onClick} onPointerDown={canAct ? drag?.onPointerDown : undefined} title={`${cardName(unit.card)}${d ? '\n' + d.text : ''}`}>
+      data-drop={drag?.dropId} style={{ '--c': d ? COLOR[d.color] : '#666' } as React.CSSProperties} onClick={onClick} onPointerDown={canAct ? drag?.onPointerDown : undefined} title={cardName(unit.card)} {...peekProps(unit.card.defId)}>
+      <Magnifier defId={unit.card.defId} />
       {art ? (
         <>
           <CardArt defId={unit.card.defId} alt={cardName(unit.card)} />
@@ -107,7 +118,8 @@ export function BaseCard({ base, onClick, highlight: hl, drop, dropId, anim }: {
   const d = base.card.token ? undefined : CARDS[base.card.defId];
   const art = useArt(base.card.defId) && !base.isEx;
   return (
-    <button className={`card base ${art ? 'with-art' : ''} ${base.rested ? 'rested' : ''} ${hl ? 'highlight' : ''} ${base.isEx ? 'token' : ''} ${drop ? 'drop-' + drop : ''} ${anim ?? ''}`} data-drop={dropId} style={{ '--c': d ? COLOR[d.color] : '#666' } as React.CSSProperties} onClick={onClick} title={`${cardName(base.card)}${d ? '\n' + d.text : ''}`}>
+    <button className={`card base ${art ? 'with-art' : ''} ${base.rested ? 'rested' : ''} ${hl ? 'highlight' : ''} ${base.isEx ? 'token' : ''} ${drop ? 'drop-' + drop : ''} ${anim ?? ''}`} data-drop={dropId} style={{ '--c': d ? COLOR[d.color] : '#666' } as React.CSSProperties} onClick={onClick} title={cardName(base.card)} {...peekProps(base.card.defId)}>
+      {!base.isEx && <Magnifier defId={base.card.defId} />}
       {art ? (
         <>
           <CardArt defId={base.card.defId} alt={cardName(base.card)} />
@@ -131,3 +143,35 @@ export function MiniCard({ card }: { card: CardInstance }) {
 }
 
 export { COLOR };
+
+/** A large, readable rendering of a card: printed art when available, plus the full text. */
+export function BigCard({ defId, showText = true }: { defId: string; showText?: boolean }) {
+  const d = CARDS[defId];
+  const art = useArt(defId);
+  if (!d) return null;
+  return (
+    <div className="bigcard">
+      {art ? <img className="bigcard-art" src={cardImage(defId)} alt={d.name} draggable={false} onError={() => markMissing(defId)} /> : (
+        <div className="card with-text bigcard-text-face" style={{ '--c': COLOR[d.color] } as React.CSSProperties}>
+          <div className="card-head"><span className="lv">Lv.{d.level}</span><span className="cost">{d.cost}</span></div>
+          <div className="card-name">{d.name}</div>
+          <div className="card-type">{d.type}{d.pilotName ? ' · Pilot' : ''} · {d.color}</div>
+          {(d.type === 'UNIT' || d.type === 'BASE') && <div className="card-stats big">{d.type === 'UNIT' ? `${d.ap} AP ` : ''}{d.hp} HP</div>}
+          {(d.type === 'PILOT' || (d.type === 'COMMAND' && d.pilotName)) && <div className="card-stats mod">{d.ap ? `+${d.ap} AP ` : ''}{d.hp ? `+${d.hp} HP` : ''}</div>}
+          {d.link && <div className="card-link">Link: {d.link.join(' / ')}</div>}
+          <CardText text={d.text} />
+        </div>
+      )}
+      {showText && (
+        <div className="bigcard-info">
+          <b>{d.name}</b>
+          <div className="muted small">{d.type}{d.pilotName ? ` (Pilot: ${d.pilotName})` : ''} · {d.color} · Lv.{d.level} · Cost {d.cost}{d.type === 'UNIT' ? ` · ${d.ap} AP / ${d.hp} HP` : d.type === 'BASE' ? ` · ${d.hp} HP` : (d.ap || d.hp) ? ` · ${d.ap ? '+' + d.ap + ' AP' : ''} ${d.hp ? '+' + d.hp + ' HP' : ''}` : ''}</div>
+          {d.traits.length > 0 && <div className="muted small">Traits: {d.traits.map(t => `(${t})`).join(' ')}</div>}
+          {d.link && <div className="card-link">Link requirement: {d.link.join(' / ')}</div>}
+          <CardText text={d.text} />
+          {d.tip && <div className="tip-line">💡 {d.tip}</div>}
+        </div>
+      )}
+    </div>
+  );
+}

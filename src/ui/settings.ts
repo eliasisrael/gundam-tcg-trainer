@@ -2,8 +2,10 @@
 import { useSyncExternalStore } from 'react';
 
 const KEY = 'gcg-trainer-settings';
-interface Settings { art: boolean }
-let settings: Settings = { art: true };
+export type CardSize = 's' | 'm' | 'l';
+interface Settings { art: boolean; cardSize: CardSize }
+let settings: Settings = { art: true, cardSize: 'm' };
+export const CARD_WIDTH: Record<CardSize, number> = { s: 110, m: 140, l: 176 };
 try { settings = { ...settings, ...JSON.parse(localStorage.getItem(KEY) ?? '{}') }; } catch { /* ignore */ }
 const listeners = new Set<() => void>();
 
@@ -23,3 +25,11 @@ export function cardImage(defId: string): string { return `/cards/${defId}.webp`
 const missing = new Set<string>();
 export function markMissing(defId: string) { missing.add(defId); listeners.forEach(l => l()); }
 export function isMissing(defId: string) { return missing.has(defId); }
+
+/** Card currently hovered anywhere in the UI, for the large preview panel. */
+let peek: string | null = null;
+const peekListeners = new Set<() => void>();
+export function setPeek(defId: string | null) { if (peek === defId) return; peek = defId; peekListeners.forEach(l => l()); }
+export function usePeek(): string | null {
+  return useSyncExternalStore(l => { peekListeners.add(l); return () => peekListeners.delete(l); }, () => peek, () => peek);
+}

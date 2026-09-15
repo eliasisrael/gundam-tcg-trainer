@@ -5,9 +5,9 @@ import { activateOptions, applyAction, attackTargets, canAttackThisTurn, canPlay
 import { aiNextAction } from '../game/ai';
 import { coachTips, detectSkills, loadSkills, reviewTurn, SKILLS, type SkillProgress, type Tip } from '../game/coach';
 import { Board } from './Board';
-import { CardText, HandCard, UnitCard } from './CardView';
+import { BigCard, CardText, HandCard, UnitCard, setInspectorOpener } from './CardView';
 import type { Zone } from '../learn/lessons';
-import { setSetting, useSettings } from './settings';
+import { CARD_WIDTH, setSetting, usePeek, useSettings, type CardSize } from './settings';
 
 // ---------- game controller ----------
 
@@ -215,6 +215,8 @@ export interface GameScreenProps {
 type Modal =
   | { kind: 'hand'; uid: number }
   | { kind: 'attack'; uid: number }
+  | { kind: 'inspect'; defId: string }
+  | { kind: 'handView' }
   | null;
 
 export function GameScreen({ game, highlightZones, sidePanel, showCoach = true, onExit, title }: GameScreenProps) {
@@ -276,6 +278,8 @@ export function GameScreen({ game, highlightZones, sidePanel, showCoach = true, 
   const tips = coachTips(state, me);
   const fx = useFx(state);
   const settings = useSettings();
+  const peek = usePeek();
+  useEffect(() => { setInspectorOpener(defId => setModal({ kind: 'inspect', defId })); }, []);
 
   // ---------- drag and drop ----------
   const [drag, setDrag] = useState<DragState | null>(null);
@@ -355,12 +359,15 @@ export function GameScreen({ game, highlightZones, sidePanel, showCoach = true, 
   const dragHint = drag?.active ? dragHintFor(state, me, drag, validDrops) : null;
 
   return (
-    <div className="game-screen">
+    <div className="game-screen" style={{ '--card-w': `${CARD_WIDTH[settings.cardSize]}px` } as React.CSSProperties}>
       <div className="topbar">
         <button className="btn ghost" onClick={onExit}>← Menu</button>
         <span className="title">{title ?? `${ps.name} (${state.players[me].id === 'p1' ? 'P1' : 'P2'}) vs ${state.players[other(me)].name}`}</span>
         <span className="spacer" />
         <label className="art-toggle" title="Show printed card art (downloaded locally) or text cards"><input type="checkbox" checked={settings.art} onChange={e => setSetting('art', e.target.checked)} /> Card art</label>
+        <label className="speed muted small">Size
+          <select value={settings.cardSize} onChange={e => setSetting('cardSize', e.target.value as CardSize)}><option value="s">Small</option><option value="m">Medium</option><option value="l">Large</option></select>
+        </label>
         <label className="speed muted small">Bot speed
           <select value={game.speed} onChange={e => game.setSpeed(e.target.value as BotSpeed)}>
             <option value="slow">Slow</option><option value="normal">Normal</option><option value="fast">Fast</option><option value="instant">Instant</option>
@@ -386,7 +393,7 @@ export function GameScreen({ game, highlightZones, sidePanel, showCoach = true, 
             selectedUid={modal?.kind === 'attack' ? modal.uid : null}
             handDisabledReason={uid => { const c = ps.hand.find(x => x.uid === uid); if (!c) return; const r = canPlay(state, me, c); return r.ok ? undefined : r.reason; }}
             drag={{ validDrops: drag?.active ? validDrops : new Set(), hoverDrop: drag?.active ? drag.hover : null, draggingUid: drag?.active ? drag.uid : null, onPointerDown: onCardPointerDown }}
-            fx={fx} />
+            fx={fx} onExpandHand={() => setModal({ kind: 'handView' })} />
           {fx.toasts.length > 0 && <div className="fx-feed">{fx.toasts.map(t => <div key={t.id} className={`toast ${t.kind}`}>{t.text}</div>)}</div>}
           {dragGhost && <div className="drag-ghost" style={{ left: drag!.x, top: drag!.y }}>{dragGhost}</div>}
           {dragHint && <div className="drag-hint">{dragHint}</div>}
@@ -410,6 +417,31 @@ export function GameScreen({ game, highlightZones, sidePanel, showCoach = true, 
           )}
 
           {modal?.kind === 'hand' && <HandDialog game={game} uid={modal.uid} onClose={() => setModal(null)} />}
+          {modal?.kind === 'inspect' && (
+            <div className="overlay" onClick={() => setModal(null)}>
+              <div className="dialog inspect-dialog" onClick={e => e.stopPropagation()}>
+                <BigCard defId={modal.defId} />
+                <button className="btn ghost close" onClick={() => setModal(null)}>Close</button>
+              </div>
+            </div>
+          )}
+          {modal?.kind === 'handView' && (
+            <div className="overlay" onClick={() => setModal(null)}>
+              <div className="hand-view" onClick={e => e.stopPropagation()}>
+                <div className="hand-view-head"><b>Your hand · {ps.hand.length}</b><span className="muted small">Click a card to play it{myTurn ? '' : ' (not your turn: view only)'}. Hover for details.</span><span className="spacer" /><button className="btn ghost" onClick={() => setModal(null)}>Close</button></div>
+                <div className="hand-view-cards">
+                  {ps.hand.map(c => {
+                    const ok = clickableHand.has(c.uid);
+                    return <HandCard key={c.uid} card={c} disabled={!ok && myTurn} reason={ps.hand.find(x => x.uid === c.uid) ? canPlay(state, me, c).reason : undefined} onClick={() => { if (ok) { setModal({ kind: 'hand', uid: c.uid }); } }} />;
+                  })}
+                  {ps.hand.length === 0 && <div className="empty-slot">Your hand is empty.</div>}
+                </div>
+              </div>
+            </div>
+          )}
+          {peek && !drag?.active && modal?.kind !== 'inspect' && modal?.kind !== 'handView' && (
+            <div className="peek-panel"><BigCard defId={peek} /></div>
+          )}
           {modal?.kind === 'attack' && (
             <div className="float-hint">
               <b>{unitName(ps.units.find(u => u.card.uid === modal.uid)!)}</b> is attacking. Click a highlighted target (or drag the Unit onto one): the enemy Shield Area, or a rested enemy Unit.
@@ -491,7 +523,7 @@ function HandDialog({ game, uid, onClose }: { game: GameController; uid: number;
   return (
     <div className="overlay" onClick={onClose}>
       <div className="dialog card-dialog" onClick={e => e.stopPropagation()}>
-        <HandCard card={card} />
+        <BigCard defId={card.defId} showText={false} />
         <div className="dialog-side">
           <h3>{d.name}</h3>
           <div className="muted">{d.type} · {d.color} · Lv.{d.level} · Cost {d.cost}{d.traits.length ? ` · (${d.traits.join(') (')})` : ''}</div>
