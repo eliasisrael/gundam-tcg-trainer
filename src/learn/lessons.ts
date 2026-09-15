@@ -5,6 +5,7 @@
 import type { GameState, PlayerId, UnitState } from '../game/types';
 import { CARDS } from '../game/cards';
 import { createGame, isLinked, unitHp } from '../game/engine';
+import { COLORS, PAIRINGS } from './colors';
 
 export type Zone = 'hand' | 'deck' | 'resourceDeck' | 'resources' | 'shields' | 'base' | 'units' | 'trash' | 'opp-units' | 'opp-shields' | 'opp-base' | 'opp-resources' | 'opp-hand' | 'phase' | 'coach';
 
@@ -288,6 +289,32 @@ export const LESSONS: Lesson[] = [
       { q: 'Best time to play a Blocker you want to keep active for defense?', options: ['Before your attacks', 'After your attacks', 'It makes no difference'], answer: 1, why: 'Order does not affect the Blocker\'s state, but deploying after attacking keeps your options open and prevents you from accidentally attacking with it.' },
       { q: 'You have 2 Resources unspent and a playable Unit. Ending the turn is…', options: ['Fine, save them', 'A tempo loss', 'Required'], answer: 1, why: 'Resources refresh every turn; saving them gains nothing. Play the Unit.' },
       { q: 'The opponent has 1 Shield, no Base, and one active Blocker. You have 3 attackers. Do you have lethal?', options: ['Yes', 'No', 'Only with Breach'], answer: 0, why: 'They can block once. Attack 1 is blocked, attack 2 breaks the Shield, attack 3 deals battle damage to the unshielded player: win.' },
+    ],
+  },
+  {
+    id: 'colors',
+    title: '9. The five colors and how to combine them',
+    minutes: 6,
+    summary: 'Each color has a pattern. Learn what Blue, Green, Red, White and Purple want to do, and which pairs work.',
+    steps: [
+      { title: 'Why colors matter', body: 'Every card is one of five colors, and a deck may use **at most two**. Colors are not cosmetic: each one has a distinct pattern of effects, and a deck plays like its colors.\n\nThe five starter decks each pair two colors. Once you know the patterns you can read an opponent\'s plan from their first two plays, and you can build your own two-color deck in the **Deck Builder**.' },
+      ...(['Blue', 'Green', 'Red', 'White', 'Purple'] as const).map(c => {
+        const g = COLORS[c];
+        return {
+          title: `${c}: ${g.tagline}`,
+          body: `${g.identity}\n\n**Signature mechanics**\n${g.mechanics.map(m => '• ' + m).join('\n')}\n\n**How to play it**\n${g.howToPlay.map(m => '• ' + m).join('\n')}\n\n**Weakness:** ${g.weaknesses}\n\nFactions: ${g.factions}.`,
+        };
+      }),
+      { title: 'Pairing colors', body: 'A good pair covers the other\'s weakness.\n\n' + PAIRINGS.map(p => `• **${p.colors.join(' + ')}** (${p.name}${p.starter ? ', starter ' + p.starter : ''}): ${p.why}`).join('\n') },
+      { title: 'Try a new combination', body: 'Open the **Deck Builder** from the menu, pick two colors, and press **Auto-build**. It assembles a legal 50-card deck with a sensible curve from every card in the trainer. Adjust counts, save it, and choose it in **Practice** for yourself or for the Trainer Bot.\n\nTo learn a color quickly: play it against a deck of the opposite style. Red vs White teaches both the race and the wall.' },
+    ],
+    quiz: [
+      { q: 'Which color accelerates by placing EX Resources?', options: ['Blue', 'Green', 'Red', 'Purple'], answer: 1, why: 'Green ramps (Wing Gundam Bird Mode places an EX Resource).' },
+      { q: 'Your deck is full of Blockers, AP reduction and bounce effects. Which color is it?', options: ['White', 'Red', 'Blue', 'Green'], answer: 0, why: 'Defense and disruption are White\'s identity.' },
+      { q: 'A Purple deck damages its own Units on purpose because…', options: ['Damage counters are removed at end of turn', 'Damaged Units gain bonuses like AP+2 or Suppression', 'It draws a card for each damage'], answer: 1, why: 'Purple\'s Units get stronger while damaged (Barbatos 2nd Form, Barbatos 4th Form).' },
+      { q: 'You have Angelo\'s Geara Zulu (<Support 2>) and Sinanju ready to attack. Correct order?', options: ['Attack with Sinanju, then Support', 'Rest Geara Zulu for Support onto Sinanju, then attack', 'Attack with both'], answer: 1, why: 'Support is an Activate·Main effect: use it before the attack so the +2 AP applies to the battle. Red\'s pattern is buff first, then swing.' },
+      { q: 'How many colors may a deck contain?', options: ['1', 'Up to 2', 'Up to 3', 'Any number'], answer: 1, why: 'A deck is one or two colors (6-1-1-2).' },
+      { q: 'Blue\'s typical way to make an enemy Unit attackable is…', options: ['Destroying its Pilot', 'Resting it with an effect', 'Giving it AP-3'], answer: 1, why: 'Guntank, Amuro Ray and Siege Ploy rest enemy Units so they become legal attack targets.' },
     ],
   },
 ];

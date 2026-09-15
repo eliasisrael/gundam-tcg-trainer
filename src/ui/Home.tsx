@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { DECKS } from '../game/cards';
+import type { DeckDef } from '../game/cards';
+import { allDecks, deckColors, loadCustomDecks, saveCustomDecks } from '../game/decks';
 import { SKILLS, loadSkills } from '../game/coach';
 import { LESSONS } from '../learn/lessons';
 import { loadLessonProgress } from './LessonScreen';
@@ -8,7 +9,7 @@ import type { PlayerId } from '../game/types';
 
 export interface PracticeOptions { myDeck: string; oppDeck: string; goFirst: boolean; me: PlayerId }
 
-export function Home({ onLesson, onPractice, onDrills }: { onLesson: (id: string) => void; onPractice: (o: PracticeOptions) => void; onDrills: () => void }) {
+export function Home({ onLesson, onPractice, onDrills, onBuilder }: { onLesson: (id: string) => void; onPractice: (o: PracticeOptions) => void; onDrills: () => void; onBuilder: (deck?: DeckDef) => void }) {
   const [view, setView] = useState<'home' | 'lessons' | 'practice'>('home');
   const progress = loadLessonProgress();
   const skills = loadSkills();
@@ -20,7 +21,7 @@ export function Home({ onLesson, onPractice, onDrills }: { onLesson: (id: string
       <div className="home">
         <button className="btn ghost" onClick={() => setView('home')}>← Menu</button>
         <h2 style={{ marginTop: 12 }}>Learn the game</h2>
-        <p className="muted">Eight short lessons. Each runs on a live board where you make the plays yourself, then a quick quiz locks it in.</p>
+        <p className="muted">Nine short lessons. Most run on a live board where you make the plays yourself, then a quick quiz locks it in.</p>
         <div className="lesson-list">
           {LESSONS.map((l, i) => (
             <button key={l.id} className={`lesson-row ${progress[l.id] ? 'done' : ''}`} onClick={() => onLesson(l.id)}>
@@ -34,7 +35,7 @@ export function Home({ onLesson, onPractice, onDrills }: { onLesson: (id: string
     );
   }
 
-  if (view === 'practice') return <PracticeSetup onBack={() => setView('home')} onStart={onPractice} />;
+  if (view === 'practice') return <PracticeSetup onBack={() => setView('home')} onStart={onPractice} onBuilder={onBuilder} />;
 
   return (
     <div className="home">
@@ -42,7 +43,7 @@ export function Home({ onLesson, onPractice, onDrills }: { onLesson: (id: string
         <div>
           <div className="kicker" style={{ color: 'var(--accent)', fontSize: 12, letterSpacing: '.08em', textTransform: 'uppercase' }}>Unofficial fan-made trainer</div>
           <h1>Gundam Card Game <span>Trainer</span></h1>
-          <p className="muted" style={{ maxWidth: 560 }}>Learn the rules by playing them, then practice against a bot with a coach that explains every decision. Built on the official Comprehensive Rules v1.9.0 and the ST01 / ST02 starter decks.</p>
+          <p className="muted" style={{ maxWidth: 560 }}>Learn the rules by playing them, then practice against a bot with a coach that explains every decision. Built on the official Comprehensive Rules v1.9.0 and the five starter decks ST01-ST05.</p>
         </div>
         <div className="muted small" style={{ marginLeft: 'auto', textAlign: 'right' }}>
           <div>Lessons: <b>{lessonsDone}/{LESSONS.length}</b></div>
@@ -63,6 +64,12 @@ export function Home({ onLesson, onPractice, onDrills }: { onLesson: (id: string
           <p className="muted">Full games against the Trainer Bot. The Coach flags free kills, missed links, unspent Resources and risky attacks, and reviews every turn.</p>
           <span className="muted small">Undo any move while you learn</span>
         </button>
+        <button className="mode" onClick={() => onBuilder()}>
+          <span className="kicker">Step 3</span>
+          <h3>Deck Builder</h3>
+          <p className="muted">Pick any one or two colors and build a 50-card deck from all five starter pools. Auto-build gives you a legal deck in one click; the color guide explains what each color wants.</p>
+          <span className="muted small">Then play it in Practice, or hand it to the bot</span>
+        </button>
         <button className="mode" onClick={onDrills}>
           <span className="kicker">Anytime</span>
           <h3>Drills &amp; Glossary</h3>
@@ -72,38 +79,45 @@ export function Home({ onLesson, onPractice, onDrills }: { onLesson: (id: string
 
       <h3>Why this exists</h3>
       <p className="muted" style={{ maxWidth: 720 }}>The official Teaching App shows you the rules once. This trainer keeps teaching: every lesson is a task you perform on the board, the Coach comments on the actual position in front of you, and a skill tracker records each mechanic the first time you use it correctly.</p>
+      <p className="muted" style={{ maxWidth: 720 }}>Card pool: the five starter decks ST01-ST05, covering all five colors (Blue, Green, Red, White, Purple).</p>
       <p className="muted small">Card names and text are property of Bandai. This tool is not affiliated with or endorsed by Bandai.</p>
     </div>
   );
 }
 
-function PracticeSetup({ onBack, onStart }: { onBack: () => void; onStart: (o: PracticeOptions) => void }) {
+function PracticeSetup({ onBack, onStart, onBuilder }: { onBack: () => void; onStart: (o: PracticeOptions) => void; onBuilder: (deck?: DeckDef) => void }) {
+  const [decks, setDecks] = useState<DeckDef[]>(allDecks);
   const [myDeck, setMyDeck] = useState('ST01');
   const [oppDeck, setOppDeck] = useState('ST02');
   const [goFirst, setGoFirst] = useState(true);
+  const custom = new Set(loadCustomDecks().map(d => d.id));
+  const remove = (id: string) => {
+    saveCustomDecks(loadCustomDecks().filter(d => d.id !== id));
+    setDecks(allDecks());
+    if (myDeck === id) setMyDeck('ST01');
+    if (oppDeck === id) setOppDeck('ST02');
+  };
+  const DeckPick = ({ value, onPick }: { value: string; onPick: (id: string) => void }) => (
+    <div className="deck-pick">
+      {decks.map(d => (
+        <button key={d.id} className={`deck-card ${value === d.id ? 'on' : ''}`} onClick={() => onPick(d.id)}>
+          <b>{d.name}{custom.has(d.id) ? '' : ` [${d.id}]`}</b>
+          <div className="swatches">{deckColors(d).map(c => <span key={c} className="swatch" style={{ background: COLOR[c] }} />)}<span className="muted small" style={{ marginLeft: 6 }}>{deckColors(d).join(' / ')}</span></div>
+          <div className="muted small">{d.description}</div>
+          {custom.has(d.id) && <div className="deck-actions"><span className="link" onClick={e => { e.stopPropagation(); onBuilder(d); }}>Edit</span><span className="link" onClick={e => { e.stopPropagation(); remove(d.id); }}>Delete</span></div>}
+        </button>
+      ))}
+    </div>
+  );
   return (
     <div className="home">
       <button className="btn ghost" onClick={onBack}>← Menu</button>
       <h2 style={{ marginTop: 12 }}>Practice game</h2>
+      <p className="muted">Five starter decks cover all five colors. Build your own two-color deck in the <span className="link" onClick={() => onBuilder()}>Deck Builder</span> and it appears here for you or the bot.</p>
       <h3 className="muted" style={{ fontWeight: 500 }}>Your deck</h3>
-      <div className="deck-pick">
-        {Object.values(DECKS).map(d => (
-          <button key={d.id} className={`deck-card ${myDeck === d.id ? 'on' : ''}`} onClick={() => setMyDeck(d.id)}>
-            <b>{d.name} [{d.id}]</b>
-            <div className="swatches">{d.colors.map(c => <span key={c} className="swatch" style={{ background: COLOR[c] }} />)}</div>
-            <div className="muted small">{d.description}</div>
-          </button>
-        ))}
-      </div>
+      <DeckPick value={myDeck} onPick={setMyDeck} />
       <h3 className="muted" style={{ fontWeight: 500 }}>Opponent deck</h3>
-      <div className="deck-pick">
-        {Object.values(DECKS).map(d => (
-          <button key={d.id} className={`deck-card ${oppDeck === d.id ? 'on' : ''}`} onClick={() => setOppDeck(d.id)}>
-            <b>{d.name} [{d.id}]</b>
-            <div className="swatches">{d.colors.map(c => <span key={c} className="swatch" style={{ background: COLOR[c] }} />)}</div>
-          </button>
-        ))}
-      </div>
+      <DeckPick value={oppDeck} onPick={setOppDeck} />
       <div className="options-row">
         <label><input type="radio" checked={goFirst} onChange={() => setGoFirst(true)} /> I go first</label>
         <label><input type="radio" checked={!goFirst} onChange={() => setGoFirst(false)} /> I go second (get an EX Resource)</label>

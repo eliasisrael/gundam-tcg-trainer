@@ -20,7 +20,7 @@ const check = (name: string, ok: boolean, extra = '') => { console.log(ok ? 'PAS
   pick(s, l => l.includes('Zowort'));
   check('L6 action step prompt', s.pending?.kind === 'actionStep', s.pending?.kind);
   pick(s, l => l.includes('Unforeseen'));
-  check('L6 target prompt after action command', s.pending?.kind === 'target.apMinus3', s.pending?.kind);
+  check('L6 target prompt after action command', s.pending?.kind === 'target', s.pending?.kind);
   pick(s, l => l.includes('Sandrock'));
   const zowort = s.players.p1.units.find(u => u.card.defId === 'ST01-009');
   const sandrock = s.players.p2.units.find(u => u.card.defId === 'ST02-004');
@@ -36,7 +36,7 @@ const check = (name: string, ok: boolean, extra = '') => { console.log(ok ? 'PAS
   check('L4 Gundam deployed', s.players.p1.units.some(u => u.card.defId === 'ST01-001'));
   const amuro = s.players.p1.hand.find(c => c.defId === 'ST01-010')!;
   applyAction(s, { type: 'playCard', player: 'p1', uid: amuro.uid }); runAI(s);
-  check('L4 Amuro When Paired prompt', s.pending?.kind === 'target.rest', s.pending?.kind);
+  check('L4 Amuro When Paired prompt', s.pending?.kind === 'target', s.pending?.kind);
   pick(s, l => l.includes('Tragos'));
   const g = s.players.p1.units.find(u => u.card.defId === 'ST01-001')!;
   check('L4 linked', !!g.pilot, '');
@@ -55,7 +55,7 @@ const check = (name: string, ok: boolean, extra = '') => { console.log(ok ? 'PAS
   check('L7 Gundam token', s.players.p1.units.some(u => u.card.token?.id === 'T-001'));
   const td = s.players.p1.hand.find(c => c.defId === 'ST01-012')!;
   applyAction(s, { type: 'playCard', player: 'p1', uid: td.uid }); runAI(s);
-  check('L7 Thoroughly Damaged target prompt', s.pending?.kind === 'target.damage1', s.pending?.kind);
+  check('L7 Thoroughly Damaged target prompt', s.pending?.kind === 'target', s.pending?.kind);
   pick(s, l => l.includes('Leo'));
   check('L7 Leo damaged', s.players.p2.units.find(u => u.card.defId === 'ST02-007')!.damage === 1);
   check('L7 resources all spent', s.players.p1.resources.every(r => r.rested), `${s.players.p1.resources.filter(r => !r.rested).length} active`);

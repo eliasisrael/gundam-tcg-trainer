@@ -6,7 +6,7 @@ import {
   activateOptions, activeResources, attackTargets, canAttackThisTurn, canPlay, commandTargets, findUnit,
   isLinked, other, playerLevel, unitAp, unitHp, unitKeywords, unitLevel, unitName, wouldLink,
 } from './engine';
-import type { GameState, PlayerId, UnitState } from './types';
+import type { Color, GameState, PlayerId, UnitState } from './types';
 
 export interface Tip {
   level: 'good' | 'info' | 'warn' | 'urgent';
@@ -160,8 +160,58 @@ export function coachTips(state: GameState, me: PlayerId): Tip[] {
   // Burst risk on offense
   if (attackers.length && op.shields.length > 0 && !op.base) tips.push(ruleTip('info', 'Shields may hold a Burst', 'Each Shield you break is revealed. Pilots return to their hand, Bases deploy for free. Attack anyway, but expect a swing.', 'burst'));
 
+  tips.push(...colorTips(state, me));
+
   if (!tips.length) tips.push(ruleTip('info', 'Nothing urgent', 'Develop your board, attack when you can trade well, and end your turn.'));
   return tips.slice(0, 5);
+}
+
+/** The colors a player is running, inferred from all their cards. */
+export function playerColors(state: GameState, me: PlayerId): Color[] {
+  const ps = state.players[me];
+  const all = [...ps.deck, ...ps.hand, ...ps.trash, ...ps.shields, ...ps.units.map(u => u.card), ...ps.units.flatMap(u => u.pilot ? [u.pilot] : [])].filter(c => !c.token);
+  return [...new Set(all.map(c => CARDS[c.defId].color))];
+}
+
+/** Color-pattern coaching: reminders specific to how each color wants to be played. */
+function colorTips(state: GameState, me: PlayerId): Tip[] {
+  const out: Tip[] = [];
+  const ps = state.players[me], op = state.players[other(me)];
+  const colors = playerColors(state, me);
+  const attackers = ps.units.filter(u => canAttackThisTurn(state, u) && attackTargets(state, me, u).length);
+  const acts = activateOptions(state, me).filter(o => o.ok);
+  if (colors.includes('Red')) {
+    const sup = acts.find(o => o.effectKey === 'support' || o.effectKey === 'vesalius');
+    if (sup && attackers.length && !state.turnFlags.attacked) out.push(ruleTip('good', 'Red pattern: buff, then swing', `${sup.label}. Activate it before attacking so the AP bonus counts in the battle.`, 'color-red'));
+    const dmg = ps.hand.find(c => c.defId === 'ST03-013' && canPlay(state, me, c).ok);
+    const blocker = op.units.find(u => unitKeywords(u).blocker && !u.rested && unitHp(u) <= 2);
+    if (dmg && blocker) out.push(ruleTip('info', 'Clear the Blocker first', `Close Combat kills ${unitName(blocker)} before your attacks, so nothing can redirect them.`, 'color-red'));
+  }
+  if (colors.includes('Purple')) {
+    const engine = acts.find(o => o.effectKey === 'cgs' || o.effectKey === 'isaribi');
+    const barb = ps.units.find(u => (u.card.defId === 'ST05-002' || u.card.defId === 'ST05-001') && u.damage === 0 && canAttackThisTurn(state, u));
+    if (engine && barb) out.push(ruleTip('good', 'Purple pattern: hurt your own Unit', `${unitName(barb)} gets stronger while damaged. ${engine.label} turns that on before you attack.`, 'color-purple'));
+    const fragile = ps.units.filter(u => unitHp(u) === 1);
+    if (fragile.length && acts.some(o => o.effectKey === 'cgs')) out.push(ruleTip('warn', 'Do not ping a 1 HP Unit', `${fragile.map(unitName).join(', ')} would be destroyed by your own effect. Count HP before self-damage.`, 'color-purple'));
+  }
+  if (colors.includes('White')) {
+    const actions = ps.hand.filter(c => CARDS[c.defId].timing?.includes('Action') && CARDS[c.defId].timing?.includes('Main') && canPlay(state, me, c).ok);
+    if (actions.length && op.units.some(u => !u.rested) && state.active === me) out.push(ruleTip('info', 'White pattern: hold the trick', `${CARDS[actions[0].defId].name} also works in the action step. It is usually worth more during the opponent's attack than in your Main Phase.`, 'color-white'));
+  }
+  if (colors.includes('Green')) {
+    const ex = ps.resources.filter(r => r.isEx).length;
+    const big = ps.hand.filter(c => CARDS[c.defId].level >= 5 && canPlay(state, me, c).ok);
+    if (ex && big.length) out.push(ruleTip('good', 'Green pattern: cash in the ramp', `Your EX Resource${ex > 1 ? 's' : ''} put${ex > 1 ? '' : 's'} you at Lv.${playerLevel(ps)} early. ${CARDS[big[0].defId].name} is playable now, ahead of schedule.`, 'color-green'));
+    const breacher = attackers.find(u => unitKeywords(u).breach);
+    const kill = breacher && op.units.find(t => t.rested && unitAp(state, breacher, me) >= unitHp(t));
+    if (breacher && kill && (op.base || op.shields.length)) out.push(ruleTip('good', 'Breach for two-for-one', `${unitName(breacher)} kills ${unitName(kill)} and <Breach ${unitKeywords(breacher).breach}> then hits their ${op.base ? 'Base' : 'top Shield'}.`, 'color-green'));
+  }
+  if (colors.includes('Blue')) {
+    const rester = ps.hand.find(c => ['ST01-004', 'ST01-010', 'ST02-014'].includes(c.defId) && canPlay(state, me, c).ok);
+    const activeEnemy = op.units.filter(u => !u.rested);
+    if (rester && activeEnemy.length && attackers.length) out.push(ruleTip('good', 'Blue pattern: rest, then kill', `${CARDS[rester.defId].name} can rest ${unitName(activeEnemy[0])}. Active Units are safe; rested ones are targets.`, 'color-blue'));
+  }
+  return out.slice(0, 2);
 }
 
 /** End-of-turn review of what the human did (call before dispatching endMain). */

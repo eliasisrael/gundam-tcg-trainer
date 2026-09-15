@@ -42,6 +42,7 @@ export interface TokenDef {
   ap: number;
   hp: number;
   traits: string[];
+  keywords?: Keywords;
 }
 
 export interface CardInstance {
@@ -64,6 +65,11 @@ export interface UnitState {
   tempKeywords: Keywords;
   /** Once-per-turn tracker for effects on this unit */
   usedThisTurn: string[];
+  /** Turn-scoped permissions/restrictions granted by effects (cleared at cleanup). */
+  flags?: {
+    canTargetActive?: { maxLv?: number; maxAp?: number; damagedOnly?: boolean };
+    cantAttackThisTurn?: boolean;
+  };
 }
 
 export interface BaseState {
@@ -103,8 +109,15 @@ export interface BattleState {
   originalTarget: 'player' | number;
   step: 'attack' | 'block' | 'action' | 'damage' | 'end';
   blocked: boolean;
-  /** cards whose "during this battle" effects are active */
-  shieldProtectLvMax?: number; // Peaceful Timbre: shields can't take damage from units Lv <= X
+  /** Peaceful Timbre: shields can't take damage from units Lv <= X */
+  shieldProtectLvMax?: number;
+  /** "During this battle" AP modifiers (Kira Yamato). */
+  apMods?: { uid: number; delta: number }[];
+  /** "Can't receive battle damage from enemy Units with N or less AP" this battle (The Blue Giant). */
+  immune?: { uid: number; apMax: number }[];
+  /** Action-step bookkeeping */
+  passes?: number;
+  actor?: PlayerId;
 }
 
 export type ChoiceOption = {

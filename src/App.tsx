@@ -5,8 +5,11 @@ import { DrillScreen } from './ui/DrillScreen';
 import { GameScreen, useGame } from './ui/GameScreen';
 import { Home, type PracticeOptions } from './ui/Home';
 import { LessonScreen } from './ui/LessonScreen';
+import { DeckBuilder } from './ui/DeckBuilder';
+import { findDeck } from './game/decks';
+import type { DeckDef } from './game/cards';
 
-type Route = { name: 'home' } | { name: 'lesson'; id: string } | { name: 'practice'; opts: PracticeOptions; key: number } | { name: 'drills' };
+type Route = { name: 'home' } | { name: 'lesson'; id: string } | { name: 'practice'; opts: PracticeOptions; key: number } | { name: 'drills' } | { name: 'builder'; deck?: DeckDef; key: number };
 
 export default function App() {
   const [route, setRoute] = useState<Route>({ name: 'home' });
@@ -20,10 +23,11 @@ export default function App() {
   }
   if (route.name === 'practice') return <Practice key={route.key} opts={route.opts} onExit={home} />;
   if (route.name === 'drills') return <DrillScreen onExit={home} />;
-  return <Home onLesson={id => setRoute({ name: 'lesson', id })} onPractice={opts => setRoute({ name: 'practice', opts, key: Date.now() })} onDrills={() => setRoute({ name: 'drills' })} />;
+  if (route.name === 'builder') return <DeckBuilder key={route.key} initial={route.deck} onExit={home} />;
+  return <Home onLesson={id => setRoute({ name: 'lesson', id })} onPractice={opts => setRoute({ name: 'practice', opts, key: Date.now() })} onDrills={() => setRoute({ name: 'drills' })} onBuilder={deck => setRoute({ name: 'builder', deck, key: Date.now() })} />;
 }
 
 function Practice({ opts, onExit }: { opts: PracticeOptions; onExit: () => void }) {
-  const game = useGame(() => createGame({ p1Deck: opts.myDeck, p2Deck: opts.oppDeck, humanId: 'p1', first: opts.goFirst ? 'p1' : 'p2', p2Name: 'Trainer Bot' }), 'p1');
+  const game = useGame(() => createGame({ p1Deck: findDeck(opts.myDeck) ?? 'ST01', p2Deck: findDeck(opts.oppDeck) ?? 'ST02', humanId: 'p1', first: opts.goFirst ? 'p1' : 'p2', p2Name: 'Trainer Bot' }), 'p1');
   return <GameScreen game={game} onExit={onExit} />;
 }

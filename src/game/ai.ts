@@ -48,22 +48,29 @@ function aiChoose(state: GameState, ai: PlayerId): { id: string | null; reason: 
     case 'block': return { id: 'pass', reason: 'No block.' };
     case 'actionStep': return { id: 'pass', reason: 'Nothing worth playing in this action step.' };
     case 'saintGabriel': return { id: opts[0].id, reason: 'Keeping the first card on top.' };
-    case 'target.rest': case 'target.apMinus3': {
-      const pick = [...opts].sort((a, b) => score(unitOf(b.id)!.unit) - score(unitOf(a.id)!.unit))[0];
-      return { id: pick.id, reason: `${pick.label} is the biggest threat on your board.` };
+    case 'target': {
+      const e = c.ctx.e as { op: string; amount?: number };
+      const units = opts.filter(o => o.id.startsWith('unit:'));
+      if (!units.length) return { id: opts[0]?.id ?? null, reason: 'Nothing to target.' };
+      const byScore = [...units].sort((a, b) => score(unitOf(b.id)!.unit) - score(unitOf(a.id)!.unit));
+      switch (e.op) {
+        case 'damage': { const kill = units.find(o => unitHp(unitOf(o.id)!.unit) <= (e.amount ?? 1)); return kill ? { id: kill.id, reason: `${kill.label} dies to ${e.amount} damage.` } : { id: byScore[0].id, reason: `${byScore[0].label} is the biggest threat.` }; }
+        case 'recover': { const pick = [...units].sort((a, b) => unitOf(b.id)!.unit.damage - unitOf(a.id)!.unit.damage)[0]; return { id: pick.id, reason: `${pick.label} has the most damage to heal.` }; }
+        case 'ap': case 'apBattle': case 'breach': case 'firstStrike': case 'selfDamageAp': {
+          if ((e.amount ?? 0) < 0) return { id: byScore[0].id, reason: `Shrinking ${byScore[0].label}, the biggest threat.` };
+          const ready = units.filter(o => canAttackThisTurn(state, unitOf(o.id)!.unit) && (e.op !== 'selfDamageAp' || unitHp(unitOf(o.id)!.unit) > 1));
+          const pick = ready.length ? [...ready].sort((a, b) => score(unitOf(b.id)!.unit) - score(unitOf(a.id)!.unit))[0] : units.find(o => e.op !== 'selfDamageAp' || unitHp(unitOf(o.id)!.unit) > 1) ?? units[0];
+          return { id: pick.id, reason: ready.length ? `${pick.label} can still attack this turn.` : `${pick.label} is the best available Unit.` };
+        }
+        case 'reactivateNoAttack': return { id: byScore[0].id, reason: `${byScore[0].label} is my best defender.` };
+        default: return { id: byScore[0].id, reason: `${byScore[0].label} is the biggest threat on your board.` };
+      }
     }
-    case 'target.damage1': {
-      const kill = opts.find(o => unitHp(unitOf(o.id)!.unit) === 1);
-      return kill ? { id: kill.id, reason: `${kill.label} has 1 HP left, so 1 damage destroys it.` } : { id: opts[0].id, reason: 'Chipping the first available target.' };
-    }
-    case 'target.recover3': {
-      const pick = [...opts].sort((a, b) => unitOf(b.id)!.unit.damage - unitOf(a.id)!.unit.damage)[0];
-      return { id: pick.id, reason: `${pick.label} has the most damage to heal.` };
-    }
-    case 'target.breach3': {
-      const ready = opts.find(o => canAttackThisTurn(state, unitOf(o.id)!.unit));
-      return ready ? { id: ready.id, reason: `${ready.label} can still attack this turn, so Breach can trigger.` } : { id: opts[0].id, reason: 'First available Unit.' };
-    }
+    case 'freeDeploy': { const hand = opts.filter(o => o.id.startsWith('hand:')); const pick = [...hand].sort((a, b) => CARDS[ps.hand.find(h => h.uid === Number(b.id.split(':')[1]))!.defId].level - CARDS[ps.hand.find(h => h.uid === Number(a.id.split(':')[1]))!.defId].level)[0]; return pick ? { id: pick.id, reason: `Free deploy: ${pick.label} is my biggest eligible Unit.` } : { id: 'pass', reason: 'Nothing to deploy.' }; }
+    case 'lookTop': { const pick = opts.find(o => o.id.startsWith('deck:')); return pick ? { id: pick.id, reason: `Adding ${pick.label} to hand.` } : { id: 'pass', reason: 'No Zeon Unit among the top cards.' }; }
+    case 'tokenChoice': { const enemyKill = state.players[other(ai)].units.some(u => u.rested && unitHp(u) <= 4); return { id: enemyKill ? 'T-010' : 'T-009', reason: enemyKill ? 'Sword Strike can kill a rested enemy Unit.' : 'Launcher Strike is the sturdier Blocker.' }; }
+    case 'fromTrash': return { id: opts[0].id, reason: `Recovering ${opts[0].label} from the trash.` };
+    case 'discardOne': { const pick = [...opts].sort((a, b) => CARDS[ps.hand.find(h => h.uid === Number(b.id.split(':')[1]))!.defId].level - CARDS[ps.hand.find(h => h.uid === Number(a.id.split(':')[1]))!.defId].level)[0]; return { id: pick.id, reason: `${pick.label} is the card I can least afford to play soon.` }; }
     default: return { id: opts[0]?.id ?? null, reason: 'First option.' };
   }
   function score(u: UnitState) { const o = findUnit(state, u.card.uid)!.owner; return unitAp(state, u, o) * 2 + unitHp(u) + (u.pilot ? 3 : 0); }
@@ -128,8 +135,14 @@ function planMain(state: GameState, ai: PlayerId): AiDecision {
   }
 
   // 5. Activate·Main effects.
+  const readyAttackers = ps.units.filter(u => canAttackThisTurn(state, u) && attackTargets(state, ai, u).length);
   for (const o of activateOptions(state, ai)) {
     if (!o.ok) continue;
+    if (o.effectKey === 'support' && readyAttackers.some(u => u.card.uid !== o.uid) && !state.turnFlags.attacked) return say({ type: 'activateMain', player: ai, uid: o.uid, effectKey: o.effectKey }, 'Resting a Support Unit before I attack gives my attacker extra AP.');
+    if (o.effectKey === 'vesalius' && readyAttackers.length) return say({ type: 'activateMain', player: ai, uid: o.uid, effectKey: o.effectKey }, 'Vesalius: a free +1 AP before my attacks.');
+    if (o.effectKey === 'isaribi' && readyAttackers.some(u => u.damage > 0)) return say({ type: 'activateMain', player: ai, uid: o.uid, effectKey: o.effectKey }, 'Isaribi rewards my damaged Unit with +2 AP.');
+    if (o.effectKey === 'cgs' && readyAttackers.some(u => unitHp(u) > 1 && u.card.defId !== 'ST05-003') && !state.turnFlags.attacked) return say({ type: 'activateMain', player: ai, uid: o.uid, effectKey: o.effectKey }, 'Purple wants its Units damaged: the Mobile Worker pings my attacker for +1 AP and turns on damage bonuses.');
+    if (o.effectKey === 'archangel' && spare >= 2 && state.turnFlags.attacked) return say({ type: 'activateMain', player: ai, uid: o.uid, effectKey: o.effectKey }, 'Archangel stands my Blocker back up after it attacked, so it can defend next turn.');
     if (o.effectKey === 'whiteBase' && spare >= 2 && !units.length) return say({ type: 'activateMain', player: ai, uid: o.uid, effectKey: o.effectKey }, 'Nothing else to play, so White Base turns 2 spare Resources into a token Unit.');
     if (o.effectKey === 'asticassia' && ps.units.some(u => isLinked(u) && canAttackThisTurn(state, u))) return say({ type: 'activateMain', player: ai, uid: o.uid, effectKey: o.effectKey }, 'Resting Asticassia before I attack gives my Link Units +1 AP.');
     if (o.effectKey === 'tallgeese' && spare >= 4) return say({ type: 'activateMain', player: ai, uid: o.uid, effectKey: o.effectKey }, 'Paying 4 to reactivate Tallgeese lets it attack a second time.');

@@ -282,3 +282,36 @@ p { margin: .4em 0; }
 .log-line.ai { color: var(--accent2); font-style: italic; }
 @keyframes destroy { 0% { transform: none; opacity: 1; filter: brightness(1); } 15% { filter: brightness(3); transform: translateX(-5px); } 30% { transform: translateX(5px); filter: brightness(1.5); } 100% { transform: scale(.6) rotate(8deg) translateY(30px); opacity: 0; filter: grayscale(1); } }
 .card.anim-destroy { animation: destroy 1.3s ease-in both; pointer-events: none; border-color: var(--urgent); }
+
+/* ---------- deck builder ---------- */
+.builder { height: 100vh; display: flex; flex-direction: column; }
+.builder-body { flex: 1; display: grid; grid-template-columns: 340px 1fr; min-height: 0; }
+.builder-side { border-right: 1px solid var(--line); background: var(--bg2); padding: 12px 14px; overflow: auto; }
+.builder-main { overflow: auto; padding: 0 14px 14px; }
+.color-picks { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.color-pick { --c: #666; background: var(--bg3); border: 2px solid var(--line); border-radius: 999px; padding: 6px 12px; font-weight: 600; }
+.color-pick.on { border-color: var(--c); background: color-mix(in srgb, var(--c) 25%, var(--bg3)); }
+.color-blurb { border-left: 3px solid var(--line); padding: 6px 10px; margin-bottom: 8px; background: rgba(255,255,255,.03); border-radius: 4px; font-size: 13px; }
+.color-blurb.pairing { border-color: var(--accent); }
+.deck-name { width: 100%; background: var(--bg3); border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: 8px 10px; font: inherit; margin-bottom: 6px; }
+.deck-count { font-size: 20px; font-weight: 700; }
+.deck-count.ok { color: var(--good); }
+.deck-count.bad { color: var(--warn); }
+.problem { color: var(--warn); }
+.saved { color: var(--good); font-size: 13px; margin: 6px 0; }
+.stat-row { display: flex; gap: 10px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin: 8px 0; }
+.curve { display: flex; gap: 4px; align-items: flex-end; height: 70px; margin-bottom: 10px; }
+.curve .bar { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; font-size: 10px; color: var(--muted); }
+.curve .fill { width: 100%; background: var(--accent2); border-radius: 3px 3px 0 0; min-height: 2px; }
+.deck-list { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+.deck-line { display: flex; gap: 8px; align-items: center; }
+.deck-line .swatch { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+.pool { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; padding-top: 10px; }
+.pool-card { --c: #666; background: var(--bg3); border: 1px solid var(--line); border-top: 4px solid var(--c); border-radius: 8px; padding: 8px; display: flex; flex-direction: column; gap: 3px; opacity: .8; }
+.pool-card.in { opacity: 1; border-color: var(--c); box-shadow: 0 0 0 1px color-mix(in srgb, var(--c) 40%, transparent); }
+.pool-card .card-text { font-size: 11px; }
+.pool-tip { font-size: 11px; color: var(--accent); margin-top: 2px; }
+.counter { display: flex; gap: 10px; align-items: center; justify-content: center; margin-top: auto; padding-top: 6px; }
+.deck-actions { display: flex; gap: 12px; margin-top: 6px; font-size: 12px; }
+.link { color: var(--accent2); cursor: pointer; text-decoration: underline; }
+@media (max-width: 900px) { .builder-body { grid-template-columns: 1fr; grid-template-rows: auto 1fr; } .builder-side { border-right: none; border-bottom: 1px solid var(--line); max-height: 45vh; } }
