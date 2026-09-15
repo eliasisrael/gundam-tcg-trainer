@@ -31,6 +31,16 @@ Simplifications: the End-Phase action step is skipped (no card in these decks us
 
 References live in `docs/`: the comprehensive rules text and the official rules FAQ (via the community gcg-api dataset).
 
+## Card images
+
+Card art is Bandai's copyrighted artwork. The repo does not include it, and Bandai's server blocks embedding it from other sites, so the trainer downloads the printed card images once from the official site into `public/cards/` (gitignored) for local, personal use:
+
+```bash
+npx tsx scripts/fetch-card-images.ts
+```
+
+With the images present the board shows the printed cards with live AP/HP, Pilot and status overlays; without them (or with the "Card art" toggle off) it shows text cards. Do not publish the app with the images included.
+
 ## Run
 
 ```bash

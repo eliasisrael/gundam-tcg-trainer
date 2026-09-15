@@ -7,6 +7,7 @@ import { coachTips, detectSkills, loadSkills, reviewTurn, SKILLS, type SkillProg
 import { Board } from './Board';
 import { CardText, HandCard, UnitCard } from './CardView';
 import type { Zone } from '../learn/lessons';
+import { setSetting, useSettings } from './settings';
 
 // ---------- game controller ----------
 
@@ -274,6 +275,7 @@ export function GameScreen({ game, highlightZones, sidePanel, showCoach = true, 
   const acts = activateOptions(state, me);
   const tips = coachTips(state, me);
   const fx = useFx(state);
+  const settings = useSettings();
 
   // ---------- drag and drop ----------
   const [drag, setDrag] = useState<DragState | null>(null);
@@ -358,6 +360,7 @@ export function GameScreen({ game, highlightZones, sidePanel, showCoach = true, 
         <button className="btn ghost" onClick={onExit}>← Menu</button>
         <span className="title">{title ?? `${ps.name} (${state.players[me].id === 'p1' ? 'P1' : 'P2'}) vs ${state.players[other(me)].name}`}</span>
         <span className="spacer" />
+        <label className="art-toggle" title="Show printed card art (downloaded locally) or text cards"><input type="checkbox" checked={settings.art} onChange={e => setSetting('art', e.target.checked)} /> Card art</label>
         <label className="speed muted small">Bot speed
           <select value={game.speed} onChange={e => game.setSpeed(e.target.value as BotSpeed)}>
             <option value="slow">Slow</option><option value="normal">Normal</option><option value="fast">Fast</option><option value="instant">Instant</option>
