@@ -3,7 +3,7 @@ import type { Action, GameState, PlayerId, UnitState } from '../game/types';
 import { CARDS } from '../game/cards';
 import { activateOptions, applyAction, attackTargets, canAttackThisTurn, canPlay, cardName, commandTargets, other, unitName, whoseDecision } from '../game/engine';
 import { aiNextAction } from '../game/ai';
-import { coachTips, detectSkills, loadSkills, reviewTurn, SKILLS, type SkillProgress, type Tip } from '../game/coach';
+import { coachTips, detectSkills, filterTips, loadSkills, reviewTurn, SKILLS, type CoachMode, type SkillProgress, type Tip } from '../game/coach';
 import { Board } from './Board';
 import { BigCard, CardText, HandCard, UnitCard, setInspectorOpener } from './CardView';
 import type { Zone } from '../learn/lessons';
@@ -84,7 +84,7 @@ export function useGame(initial: () => GameState, me: PlayerId): GameController 
     setState(prev => {
       const before = structuredClone(prev);
       const next = structuredClone(prev);
-      if (a.type === 'endMain' && a.player === me) setReviews(r => [...r.slice(-5), reviewTurn(next, me)]);
+      if (a.type === 'endMain' && a.player === me) setReviews(r => [...r.slice(-40), reviewTurn(next, me)]);
       applyAction(next, a);
       if (SPEED_MS[speed] === 0) runAI(next);
       const f = followUp?.(next);
@@ -210,6 +210,8 @@ export interface GameScreenProps {
   showCoach?: boolean;
   onExit?: () => void;
   title?: string;
+  /** How much the coach reveals during play (default: everything). */
+  coachMode?: CoachMode;
 }
 
 type Modal =
@@ -219,7 +221,7 @@ type Modal =
   | { kind: 'handView' }
   | null;
 
-export function GameScreen({ game, highlightZones, sidePanel, showCoach = true, onExit, title }: GameScreenProps) {
+export function GameScreen({ game, highlightZones, sidePanel, showCoach = true, onExit, title, coachMode = 'full' }: GameScreenProps) {
   const { state, me, dispatch } = game;
   const [modal, setModal] = useState<Modal>(null);
   const [tab, setTab] = useState<'coach' | 'log' | 'skills'>('coach');
@@ -275,7 +277,7 @@ export function GameScreen({ game, highlightZones, sidePanel, showCoach = true, 
   };
 
   const acts = activateOptions(state, me);
-  const tips = coachTips(state, me);
+  const tips = state.winner ? coachTips(state, me) : filterTips(coachTips(state, me), coachMode);
   const fx = useFx(state);
   const settings = useSettings();
   const peek = usePeek();
@@ -411,6 +413,15 @@ export function GameScreen({ game, highlightZones, sidePanel, showCoach = true, 
                 <h2>{state.winner === me ? 'Victory!' : 'Defeat'}</h2>
                 <p>{state.loseReason}</p>
                 <p className="muted">Turns: {state.turn} · Shields you broke: {state.stats[me].shieldsBroken} · Units destroyed: {state.stats[me].unitsDestroyed} · Link Units: {state.stats[me].linkUnitsMade}</p>
+                {game.reviews.length > 0 && (
+                  <div className="game-review">
+                    <div className="zone-label">Coach review of your turns</div>
+                    {game.reviews.map((r, i) => {
+                      const notable = r.filter(t => t.level !== 'good');
+                      return <div key={i} className="review-turn"><b>Turn {i + 1}</b>{notable.length ? notable.map((t, j) => <div key={j} className={`tip ${t.level}`}><b>{t.title}</b><div>{t.text}</div></div>) : <span className="muted small"> clean</span>}</div>;
+                    })}
+                  </div>
+                )}
                 <button className="btn primary" onClick={onExit}>Back to menu</button>
               </div>
             </div>
@@ -459,7 +470,7 @@ export function GameScreen({ game, highlightZones, sidePanel, showCoach = true, 
                 <button className={tab === 'log' ? 'on' : ''} onClick={() => setTab('log')}>Log</button>
                 <button className={tab === 'skills' ? 'on' : ''} onClick={() => setTab('skills')}>Skills</button>
               </div>
-              {tab === 'coach' && <CoachPanel tips={tips} reviews={game.reviews} />}
+              {tab === 'coach' && <CoachPanel tips={tips} reviews={coachMode === 'off' && !state.winner ? [] : game.reviews} quiet={coachMode !== 'full' && !state.winner ? coachMode : undefined} />}
               {tab === 'log' && <LogPanel state={state} mark={game.lastLogMark} me={me} />}
               {tab === 'skills' && <SkillsPanel skills={game.skills} />}
             </>
@@ -557,12 +568,13 @@ function PendingDialog({ game }: { game: GameController }) {
   );
 }
 
-export function CoachPanel({ tips, reviews }: { tips: Tip[]; reviews: Tip[][] }) {
+export function CoachPanel({ tips, reviews, quiet }: { tips: Tip[]; reviews: Tip[][]; quiet?: CoachMode }) {
   return (
     <div className="coach">
       <div className="coach-now">
         <div className="zone-label">Right now</div>
         {tips.map((t, i) => <div key={i} className={`tip ${t.level}`}><b>{t.title}</b><div>{t.text}</div></div>)}
+        {quiet && <div className="muted small">{quiet === 'hints' ? 'Hints mode: the coach explains the situation but will not point at the best move. Your turns are reviewed after you end them.' : quiet === 'review' ? 'Review mode: no live tips. Each turn is reviewed after you end it.' : 'Coach off: the full review arrives when the game ends.'}</div>}
       </div>
       {reviews.length > 0 && (
         <div className="coach-review">

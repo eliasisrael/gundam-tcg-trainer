@@ -8,6 +8,7 @@ Not affiliated with or endorsed by Bandai. Card names and text are Bandai's prop
 
 - **Learn**: eight hands-on lessons. Each step highlights the relevant board zone and most steps set a task you must perform (deploy this, pair that, block, play an Action command) before you can continue. Every lesson ends with a quiz that cites the Comprehensive Rules.
 - **Practice**: full games against a heuristic bot using the five starter decks ST01-ST05 (Heroic Beginnings, Wings of Advance, Zeon's Rush, SEED Strike, Iron Bloom), which together cover all five colors, or any custom deck.
+- **Challenge levels**: Rookie (basic bot, full coach), Pilot (evaluating bot that blocks well and sets up kills with buffs; coach gives hints but never names the best move), Ace (also plays around Blockers, keeps defenders home and counts lethal races; no live coaching, turn reviews afterwards), plus Custom to mix any bot strength with any coach mode. Your win/loss record per level is kept, and the setup screen suggests moving up after a winning streak.
 - **Deck Builder**: pick one or two colors, auto-build a legal 50-card deck from the whole pool, adjust counts, save it, and play it (or hand it to the bot). Each color and pairing comes with a short strategy guide.
 - **Colors lesson**: what Blue, Green, Red, White and Purple each do, their signature mechanics, how to sequence them, and which pairs cover each other's weaknesses. The Coach also gives color-specific pattern reminders during games. The Coach panel comments on the live position: lethal checks, free kills, missed links, unspent Resources, dangerous blockers, burst risk. Each End Turn produces a review of what you missed. Undo is available as a training aid.
 - **Drills & Glossary**: ten-question rules drills and a glossary of every keyword and timing icon.
@@ -56,6 +57,7 @@ npm run dev
 npx tsx scripts/sim.ts 300        # AI vs AI: no crashes, stuck states or card leaks
 npx tsx scripts/lesson-test.ts    # scripted human decision paths through the lessons
 npx tsx scripts/deck-test.ts      # auto-build every color combination and play games with them
+npx tsx scripts/level-test.ts     # pit bot levels against each other (stronger levels should win more)
 ```
 
 ## Layout
@@ -63,7 +65,8 @@ npx tsx scripts/deck-test.ts      # auto-build every color combination and play 
 - `src/game/types.ts` — state model
 - `src/game/cards.ts` — card database and deck lists
 - `src/game/engine.ts` — rules engine
-- `src/game/ai.ts` — Trainer Bot
+- `src/game/ai.ts` — Trainer Bot (basic planner, and the advanced/ace planner with attack evaluation)
+- `src/game/ladder.ts` — challenge levels and the per-level record
 - `src/game/coach.ts` — coaching heuristics, turn review, skill tracker
 - `src/game/decks.ts` — custom deck storage, validation, auto-build
 - `src/learn/lessons.ts` — curriculum, sandbox boards, quizzes

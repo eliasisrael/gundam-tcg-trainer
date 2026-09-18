@@ -5,9 +5,11 @@ import { SKILLS, loadSkills } from '../game/coach';
 import { LESSONS } from '../learn/lessons';
 import { loadLessonProgress } from './LessonScreen';
 import { COLOR } from './CardView';
-import type { PlayerId } from '../game/types';
+import type { BotLevel, PlayerId } from '../game/types';
+import { LEVELS, loadRecord, suggestion, type LevelId } from '../game/ladder';
+import { COACH_MODES, type CoachMode } from '../game/coach';
 
-export interface PracticeOptions { myDeck: string; oppDeck: string; goFirst: boolean; me: PlayerId }
+export interface PracticeOptions { myDeck: string; oppDeck: string; goFirst: boolean; me: PlayerId; level: LevelId; botLevel: BotLevel; coachMode: CoachMode }
 
 export function Home({ onLesson, onPractice, onDrills, onBuilder }: { onLesson: (id: string) => void; onPractice: (o: PracticeOptions) => void; onDrills: () => void; onBuilder: (deck?: DeckDef) => void }) {
   const [view, setView] = useState<'home' | 'lessons' | 'practice'>('home');
@@ -90,6 +92,12 @@ function PracticeSetup({ onBack, onStart, onBuilder }: { onBack: () => void; onS
   const [myDeck, setMyDeck] = useState('ST01');
   const [oppDeck, setOppDeck] = useState('ST02');
   const [goFirst, setGoFirst] = useState(true);
+  const [level, setLevel] = useState<LevelId>(() => { try { return (localStorage.getItem('gcg-trainer-level') as LevelId) || 'rookie'; } catch { return 'rookie'; } });
+  const [botLevel, setBotLevel] = useState<BotLevel>('advanced');
+  const [coachMode, setCoachMode] = useState<CoachMode>('full');
+  const record = loadRecord();
+  const tip = suggestion(level);
+  const pickLevel = (id: LevelId) => { setLevel(id); try { localStorage.setItem('gcg-trainer-level', id); } catch { /* ignore */ } };
   const custom = new Set(loadCustomDecks().map(d => d.id));
   const remove = (id: string) => {
     saveCustomDecks(loadCustomDecks().filter(d => d.id !== id));
@@ -113,6 +121,27 @@ function PracticeSetup({ onBack, onStart, onBuilder }: { onBack: () => void; onS
     <div className="home">
       <button className="btn ghost" onClick={onBack}>← Menu</button>
       <h2 style={{ marginTop: 12 }}>Practice game</h2>
+      <h3 className="muted" style={{ fontWeight: 500 }}>Challenge level</h3>
+      <div className="levels">
+        {LEVELS.map(l => {
+          const r = record[l.id];
+          return (
+            <button key={l.id} className={`level-card ${level === l.id ? 'on' : ''}`} onClick={() => pickLevel(l.id)}>
+              <b>{l.name}</b>
+              <div className="muted small">{l.blurb}</div>
+              <div className="rec">{r ? <>Record: <b>{r.w}</b> W · {r.l} L</> : 'No games yet'}</div>
+            </button>
+          );
+        })}
+      </div>
+      {level === 'custom' && (
+        <div className="custom-row">
+          <label>Bot strength<select value={botLevel} onChange={e => setBotLevel(e.target.value as BotLevel)}><option value="basic">Basic</option><option value="advanced">Advanced</option><option value="ace">Ace</option></select></label>
+          <label>Coach<select value={coachMode} onChange={e => setCoachMode(e.target.value as CoachMode)}>{Object.entries(COACH_MODES).map(([k, v]) => <option key={k} value={k}>{v.name}</option>)}</select></label>
+          <span className="muted small" style={{ alignSelf: 'flex-end', maxWidth: 420 }}>{COACH_MODES[coachMode].blurb}</span>
+        </div>
+      )}
+      {tip && <div className="tip good" style={{ maxWidth: 720 }}><b>Move up?</b><div>{tip}</div></div>}
       <p className="muted">Five starter decks cover all five colors. Build your own two-color deck in the <span className="link" onClick={() => onBuilder()}>Deck Builder</span> and it appears here for you or the bot.</p>
       <h3 className="muted" style={{ fontWeight: 500 }}>Your deck</h3>
       <DeckPick value={myDeck} onPick={setMyDeck} />
@@ -122,7 +151,7 @@ function PracticeSetup({ onBack, onStart, onBuilder }: { onBack: () => void; onS
         <label><input type="radio" checked={goFirst} onChange={() => setGoFirst(true)} /> I go first</label>
         <label><input type="radio" checked={!goFirst} onChange={() => setGoFirst(false)} /> I go second (get an EX Resource)</label>
       </div>
-      <button className="btn primary" onClick={() => onStart({ myDeck, oppDeck, goFirst, me: 'p1' })}>Start game ▶</button>
+      <button className="btn primary" onClick={() => { const L = LEVELS.find(x => x.id === level)!; onStart({ myDeck, oppDeck, goFirst, me: 'p1', level, botLevel: level === 'custom' ? botLevel : L.bot, coachMode: level === 'custom' ? coachMode : L.coach }); }}>Start game ▶</button>
     </div>
   );
 }

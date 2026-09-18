@@ -2,6 +2,8 @@
 // Rules reference: docs/comprehensive-rules-v1.9.0.txt
 
 export type PlayerId = 'p1' | 'p2';
+/** Bot strength: basic = simple heuristics, advanced = evaluates every attack, ace = also plays around blockers, exposure and lethal races. */
+export type BotLevel = 'basic' | 'advanced' | 'ace';
 export type Color = 'Blue' | 'Green' | 'Red' | 'White' | 'Purple';
 export type CardType = 'UNIT' | 'PILOT' | 'COMMAND' | 'BASE';
 
@@ -165,6 +167,10 @@ export interface GameState {
   setupStage: 'mulligan' | 'playing';
   /** Whether the human controls p1 */
   humanId: PlayerId;
+  /** How strong the bot plays (also read by the engine's block / action-step decisions). */
+  botLevel: BotLevel;
+  /** Optional per-player override, used by simulations that pit levels against each other. */
+  botLevelByPlayer?: Partial<Record<PlayerId, BotLevel>>;
   /** stats for coaching */
   stats: Record<PlayerId, PlayerStats>;
   /** Cards temporarily out of any zone while a choice about them is pending */

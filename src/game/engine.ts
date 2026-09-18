@@ -5,7 +5,7 @@
 
 import { CARDS, DECKS, TOKENS, type DeckDef } from './cards';
 import type {
-  Action, BaseState, CardDef, CardInstance, ChoiceOption, GameState, Keywords, LogEntry,
+  Action, BaseState, BotLevel, CardDef, CardInstance, ChoiceOption, GameState, Keywords, LogEntry,
   PendingChoice, PlayerId, PlayerState, PlayerStats, ResourceState, UnitState,
 } from './types';
 
@@ -66,6 +66,7 @@ export interface GameOptions {
   seed?: number;
   first?: PlayerId;
   skipMulligan?: boolean;
+  botLevel?: BotLevel;
 }
 
 export function resolveDeck(d: string | DeckDef): DeckDef {
@@ -105,6 +106,7 @@ export function createGame(opts: GameOptions): GameState {
     turnFlags: {},
     setupStage: 'mulligan',
     humanId: opts.humanId,
+    botLevel: opts.botLevel ?? 'basic',
     stats: { p1: emptyStats(), p2: emptyStats() },
     holding: [],
   };
@@ -1117,19 +1119,31 @@ function aiBlockDecision(state: GameState, defender: PlayerId, attacker: UnitSta
   const atkAp = unitAp(state, attacker, other(defender));
   const atkHp = unitHp(attacker);
   const aName = unitName(attacker);
+  const lvl = state.botLevelByPlayer?.[defender] ?? state.botLevel;
+  const strong = lvl !== 'basic';
   const heroic = blockers.filter(bl => unitAp(state, bl, defender) >= atkHp && unitHp(bl) > atkAp);
   if (heroic.length) return { unit: heroic[0], reason: `it destroys ${aName} (${atkHp} HP) and survives its ${atkAp} AP.` };
+  // A blocker that survives without killing still saves the shield/unit for free (advanced+).
+  const freeWall = strong ? blockers.filter(bl => unitHp(bl) > atkAp && !bl.pilot) : [];
   if (b.target === 'player') {
     const shieldsLeft = ps.shields.length + (ps.base ? 1 : 0);
     const trade = blockers.filter(bl => unitAp(state, bl, defender) >= atkHp);
     if (trade.length) return { unit: trade[0], reason: `it trades with ${aName}, and a Unit for a Unit is better than losing a Shield.` };
+    if (freeWall.length && !ps.base) return { unit: freeWall[0], reason: `it absorbs the ${atkAp} AP hit and survives, so I keep my Shield for free.` };
+    // Ace: count the race. If the opponent could finish me next turn, every shield matters.
+    if (lvl === 'ace') {
+      const threats = state.players[other(defender)].units.filter(u => u.card.defId !== 'ST01-009').length;
+      if (threats > shieldsLeft && shieldsLeft <= 3) return { unit: [...blockers].sort((a, b2) => unitLevel(a) - unitLevel(b2))[0], reason: `you have ${threats} attackers against my ${shieldsLeft} shield-area cards; I block to stay out of lethal range.` };
+    }
     if (shieldsLeft <= 2) return { unit: [...blockers].sort((a, b2) => unitHp(a) - unitHp(b2))[0], reason: `I only have ${shieldsLeft} card(s) left in my shield area, so I must buy time.` };
     return { unit: null, reason: `blocking would just lose the Blocker; with ${ps.shields.length} Shields I can afford to take this hit.` };
   }
   const tgt = findUnit(state, b.target)!.unit;
   if (unitHp(tgt) <= atkAp && (tgt.pilot || unitLevel(tgt) >= 4)) {
+    if (freeWall.length) return { unit: freeWall[0], reason: `${unitName(tgt)} would die; ${unitName(freeWall[0])} takes the hit and survives.` };
     return { unit: [...blockers].sort((a, b2) => unitLevel(a) - unitLevel(b2))[0], reason: `${unitName(tgt)} would die, and it is worth more than my cheapest Blocker.` };
   }
+  if (strong && unitHp(tgt) <= atkAp && freeWall.length && unitLevel(tgt) >= 2) return { unit: freeWall[0], reason: `${unitName(freeWall[0])} can absorb this for free and keep ${unitName(tgt)} alive.` };
   return { unit: null, reason: unitHp(tgt) > atkAp ? `${unitName(tgt)} survives the hit anyway.` : `${unitName(tgt)} is not worth sacrificing a Blocker for.` };
 }
 

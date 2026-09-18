@@ -14,6 +14,26 @@ export interface Tip {
   text: string;
   /** Rules concept this tip teaches, for the skill tracker */
   concept?: string;
+  /** True when the tip points at a specific best move (hidden at higher challenge levels). */
+  spoiler?: boolean;
+}
+
+/** How much the coach reveals during play. */
+export type CoachMode = 'full' | 'hints' | 'review' | 'off';
+export const COACH_MODES: Record<CoachMode, { name: string; blurb: string }> = {
+  full: { name: 'Full coach', blurb: 'Points out the best moves, free kills, links and lethal as they come up.' },
+  hints: { name: 'Hints only', blurb: 'Explains rules and the situation, but never names the best move. Mistakes are reviewed after each turn.' },
+  review: { name: 'Review only', blurb: 'Silent during the turn; a review of what you missed after every turn.' },
+  off: { name: 'No coach', blurb: 'Nothing until the game ends, then a full review of every turn.' },
+};
+
+/** Concepts that tell you what to do rather than what is true. */
+const SPOILER_CONCEPTS = new Set(['win', 'combat', 'link', 'sequencing', 'curve', 'base', 'activate', 'color-red', 'color-purple', 'color-white', 'color-green', 'color-blue', 'mulligan', 'pairing']);
+
+export function filterTips(tips: Tip[], mode: CoachMode): Tip[] {
+  if (mode === 'full') return tips;
+  if (mode === 'hints') return tips.filter(t => !t.spoiler && !(t.concept && SPOILER_CONCEPTS.has(t.concept)));
+  return [];
 }
 
 function ruleTip(level: Tip['level'], title: string, text: string, concept?: string): Tip {
@@ -49,8 +69,8 @@ export function coachTips(state: GameState, me: PlayerId): Tip[] {
           const b = findUnit(state, o.ref.uid)!.unit;
           const bAp = unitAp(state, b, me), bHp = unitHp(b);
           const kills = bAp >= hp, dies = ap >= bHp;
-          tips.push(ruleTip(kills && !dies ? 'good' : kills ? 'info' : dies ? 'warn' : 'good', `${unitName(b)} blocks: ${kills ? 'kills the attacker' : 'attacker survives'}, ${dies ? 'blocker dies' : 'blocker survives'}`,
-            `${unitName(b)} has ${bAp} AP / ${bHp} HP vs the attacker's ${ap} AP / ${hp} HP.`, 'blocker'));
+          tips.push({ ...ruleTip(kills && !dies ? 'good' : kills ? 'info' : dies ? 'warn' : 'good', `${unitName(b)} blocks: ${kills ? 'kills the attacker' : 'attacker survives'}, ${dies ? 'blocker dies' : 'blocker survives'}`,
+            `${unitName(b)} has ${bAp} AP / ${bHp} HP vs the attacker's ${ap} AP / ${hp} HP.`, 'blocker'), spoiler: true });
         }
         const shieldsLeft = ps.shields.length + (ps.base ? 1 : 0);
         if (state.battle!.target === 'player') {
@@ -59,7 +79,7 @@ export function coachTips(state: GameState, me: PlayerId): Tip[] {
         }
         break;
       }
-      case 'burst': tips.push(ruleTip('good', 'Almost always activate', 'A Burst is free value: Pilots return to hand, Bases deploy and refund a card, Commands resolve at no cost. Decline only if the effect would hurt you.', 'burst')); break;
+      case 'burst': tips.push(ruleTip('info', 'Burst', 'A Burst is free value: Pilots return to hand, Bases deploy and refund a card, Commands resolve at no cost. Decline only if the effect would hurt you.', 'burst')); break;
       case 'actionStep': {
         const atk = findUnit(state, state.battle!.attackerUid)!;
         tips.push(ruleTip('info', 'Action step', `Damage has not been dealt yet. ${atk.owner === me ? 'You are attacking' : 'You are defending'}: an AP-3 on the right Unit or Peaceful Timbre can flip this battle.`, 'actionStep'));

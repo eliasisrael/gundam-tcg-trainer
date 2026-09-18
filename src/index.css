@@ -362,3 +362,15 @@ p { margin: .4em 0; }
 .hand-view-cards .card .card-text { font-size: 12px; }
 .hand-label { display: flex; align-items: center; gap: 10px; }
 .expand-hand { text-transform: none; letter-spacing: 0; font-size: 12px; padding: 2px 8px; }
+
+.game-review { max-height: 40vh; overflow: auto; margin: 10px 0; text-align: left; border-top: 1px solid var(--line); padding-top: 8px; }
+.review-turn { margin-bottom: 6px; font-size: 13px; }
+.review-turn > b { display: block; color: var(--muted); font-size: 12px; margin-bottom: 2px; }
+.levels { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin: 8px 0 16px; }
+.level-card { text-align: left; background: var(--bg2); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
+.level-card.on { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(240,180,41,.3); }
+.level-card .rec { font-size: 12px; color: var(--muted); margin-top: auto; }
+.level-card .rec b { color: var(--good); }
+.custom-row { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
+.custom-row label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.custom-row select { background: var(--bg3); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font: inherit; }

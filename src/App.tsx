@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { LEVELS, recordResult } from './game/ladder';
 import { createGame } from './game/engine';
 import { LESSONS, lessonById } from './learn/lessons';
 import { DrillScreen } from './ui/DrillScreen';
@@ -28,6 +29,11 @@ export default function App() {
 }
 
 function Practice({ opts, onExit }: { opts: PracticeOptions; onExit: () => void }) {
-  const game = useGame(() => createGame({ p1Deck: findDeck(opts.myDeck) ?? 'ST01', p2Deck: findDeck(opts.oppDeck) ?? 'ST02', humanId: 'p1', first: opts.goFirst ? 'p1' : 'p2', p2Name: 'Trainer Bot' }), 'p1');
-  return <GameScreen game={game} onExit={onExit} />;
+  const levelName = LEVELS.find(l => l.id === opts.level)?.name ?? 'Custom';
+  const game = useGame(() => createGame({ p1Deck: findDeck(opts.myDeck) ?? 'ST01', p2Deck: findDeck(opts.oppDeck) ?? 'ST02', humanId: 'p1', first: opts.goFirst ? 'p1' : 'p2', p2Name: `Trainer Bot (${levelName})`, botLevel: opts.botLevel }), 'p1');
+  const recorded = useRef(false);
+  useEffect(() => {
+    if (game.state.winner && !recorded.current) { recorded.current = true; recordResult(opts.level, game.state.winner === 'p1'); }
+  }, [game.state.winner, opts.level]);
+  return <GameScreen game={game} onExit={onExit} coachMode={opts.coachMode} title={`Player vs Trainer Bot · ${levelName}`} />;
 }
