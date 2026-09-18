@@ -14,6 +14,8 @@ export function setSetting<K extends keyof Settings>(k: K, v: Settings[K]) {
   try { localStorage.setItem(KEY, JSON.stringify(settings)); } catch { /* ignore */ }
   listeners.forEach(l => l());
 }
+/** Re-render every subscriber: useSyncExternalStore only re-renders when the snapshot object changes. */
+function invalidate() { settings = { ...settings }; listeners.forEach(l => l()); }
 export function useSettings(): Settings {
   return useSyncExternalStore(l => { listeners.add(l); return () => listeners.delete(l); }, () => settings, () => settings);
 }
@@ -33,7 +35,7 @@ export function isMissing(defId: string) { return missing.has(defId); }
 export function markMissing(defId: string) {
   if (gaveUp.has(defId) || missing.has(defId)) { if (!gaveUp.has(defId)) scheduleProbe(defId, 3000); return; }
   missing.add(defId);
-  listeners.forEach(l => l());
+  invalidate();
   scheduleProbe(defId, 2500);
 }
 function scheduleProbe(defId: string, delay: number) {
@@ -42,7 +44,7 @@ function scheduleProbe(defId: string, delay: number) {
     probing.delete(defId);
     try {
       const res = await fetch(cardImage(defId), { method: 'HEAD', cache: 'no-store' });
-      if (res.ok) { missing.delete(defId); listeners.forEach(l => l()); return; }
+      if (res.ok) { missing.delete(defId); invalidate(); return; }
       if (res.status === 404) { gaveUp.add(defId); return; } // really not downloaded: stay on text cards
     } catch { /* server unreachable: try again later */ }
     scheduleProbe(defId, Math.min(30000, delay * 2));
