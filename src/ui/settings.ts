@@ -59,8 +59,10 @@ function scheduleProbe(defId: string, delay: number) {
     probing.delete(defId);
     try {
       const res = await fetch(cardImage(defId), { method: 'HEAD', cache: 'no-store' });
-      if (res.ok) { missing.delete(defId); invalidate(); return; }
-      if (res.status === 404) { gaveUp.add(defId); return; } // really not downloaded: stay on text cards
+      const isImage = (res.headers.get('content-type') ?? '').includes('image');
+      if (res.ok && isImage) { missing.delete(defId); invalidate(); return; }
+      // A 404, or a dev/SPA server answering with index.html, means the file is really absent: stay on text cards.
+      if (res.status === 404 || (res.ok && !isImage)) { gaveUp.add(defId); return; }
     } catch { /* server unreachable: try again later */ }
     scheduleProbe(defId, Math.min(30000, delay * 2));
   }, delay));
