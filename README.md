@@ -44,6 +44,10 @@ With the images present the board shows the printed cards with live AP/HP, Pilot
 
 Reading cards: hover any card for a large preview with its full text and tip, click the magnifier on a card for a full-size inspector, use **Expand hand** to see your hand at full size (and play from there), and pick a card size (Small / Medium / Large) in the top bar.
 
+## Hosting (GitHub Pages)
+
+Pushing to `main` runs `.github/workflows/pages.yml`, which builds the site with `BASE_PATH=/<repo>/` and deploys it to GitHub Pages. The public build contains **no card images** (they are gitignored and never fetched in CI), so it shows text cards and hides the "Card art" toggle. Everything else works: lessons, practice vs the bot, deck builder, drills. Progress is stored in each visitor's browser.
+
 ## Run
 
 ```bash

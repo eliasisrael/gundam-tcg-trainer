@@ -7,7 +7,7 @@ import { coachTips, detectSkills, filterTips, loadSkills, reviewTurn, SKILLS, ty
 import { Board } from './Board';
 import { BigCard, CardText, HandCard, UnitCard, setInspectorOpener } from './CardView';
 import type { Zone } from '../learn/lessons';
-import { CARD_WIDTH, setSetting, usePeek, useSettings, type CardSize } from './settings';
+import { CARD_WIDTH, setSetting, useArtAvailable, usePeek, useSettings, type CardSize } from './settings';
 
 // ---------- game controller ----------
 
@@ -280,6 +280,7 @@ export function GameScreen({ game, highlightZones, sidePanel, showCoach = true, 
   const tips = state.winner ? coachTips(state, me) : filterTips(coachTips(state, me), coachMode);
   const fx = useFx(state);
   const settings = useSettings();
+  const artAvailable = useArtAvailable();
   const peek = usePeek();
   useEffect(() => { setInspectorOpener(defId => setModal({ kind: 'inspect', defId })); }, []);
 
@@ -366,7 +367,7 @@ export function GameScreen({ game, highlightZones, sidePanel, showCoach = true, 
         <button className="btn ghost" onClick={onExit}>← Menu</button>
         <span className="title">{title ?? `${ps.name} (${state.players[me].id === 'p1' ? 'P1' : 'P2'}) vs ${state.players[other(me)].name}`}</span>
         <span className="spacer" />
-        <label className="art-toggle" title="Show printed card art (downloaded locally) or text cards"><input type="checkbox" checked={settings.art} onChange={e => setSetting('art', e.target.checked)} /> Card art</label>
+        {artAvailable !== false && <label className="art-toggle" title="Show printed card art (downloaded locally) or text cards"><input type="checkbox" checked={settings.art} onChange={e => setSetting('art', e.target.checked)} /> Card art</label>}
         <label className="speed muted small">Size
           <select value={settings.cardSize} onChange={e => setSetting('cardSize', e.target.value as CardSize)}><option value="s">Small</option><option value="m">Medium</option><option value="l">Large</option></select>
         </label>

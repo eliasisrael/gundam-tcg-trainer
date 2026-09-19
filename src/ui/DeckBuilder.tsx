@@ -4,7 +4,7 @@ import { CARDS, type DeckDef } from '../game/cards';
 import { autoBuild, loadCustomDecks, poolFor, poolMax, saveCustomDecks, validateDeck } from '../game/decks';
 import { COLORS, pairingFor } from '../learn/colors';
 import { CardText, COLOR } from './CardView';
-import { cardImage, isMissing, markMissing, useSettings } from './settings';
+import { cardImage, isMissing, markMissing, useArtAvailable, useSettings } from './settings';
 
 const ALL: Color[] = ['Blue', 'Green', 'Red', 'White', 'Purple'];
 
@@ -46,6 +46,7 @@ export function DeckBuilder({ onExit, initial }: { onExit: () => void; initial?:
   const curve = [1, 2, 3, 4, 5, 6, 7].map(lv => cards.filter(([id]) => CARDS[id].level === lv && CARDS[id].type !== 'BASE').reduce((n, [, c]) => n + c, 0));
   const shown = filter === 'ALL' ? pool : pool.filter(c => c.type === filter);
   const settings = useSettings();
+  const artAvailable = useArtAvailable();
 
   return (
     <div className="builder">
@@ -95,7 +96,7 @@ export function DeckBuilder({ onExit, initial }: { onExit: () => void; initial?:
               const n = counts[c.id] ?? 0;
               return (
                 <div key={c.id} className={`pool-card ${n ? 'in' : ''}`} style={{ '--c': COLOR[c.color] } as React.CSSProperties}>
-                  {settings.art && !isMissing(c.id) && <img className="pool-art" src={cardImage(c.id)} alt={c.name} loading="lazy" onError={() => markMissing(c.id)} />}
+                  {settings.art && artAvailable !== false && !isMissing(c.id) && <img className="pool-art" src={cardImage(c.id)} alt={c.name} loading="lazy" onError={() => markMissing(c.id)} />}
                   <div className="card-head"><span className="lv">Lv.{c.level}</span><span className="cost">{c.cost}</span></div>
                   <div className="card-name">{c.name}</div>
                   <div className="card-type">{c.type}{c.pilotName ? ' · Pilot' : ''} · {c.color}</div>

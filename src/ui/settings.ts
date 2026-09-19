@@ -20,8 +20,23 @@ export function useSettings(): Settings {
   return useSyncExternalStore(l => { listeners.add(l); return () => listeners.delete(l); }, () => settings, () => settings);
 }
 
-/** Local path of a card's art (downloaded by scripts/fetch-card-images.ts). */
-export function cardImage(defId: string): string { return `/cards/${defId}.webp`; }
+/** Local path of a card's art (downloaded by scripts/fetch-card-images.ts). Respects the Vite base path (GitHub Pages subfolder). */
+export function cardImage(defId: string): string { return `${import.meta.env.BASE_URL}cards/${defId}.webp`; }
+
+/**
+ * Whether card art exists in this deployment at all. The public build ships without Bandai's
+ * images, so we probe one known card once and hide the art toggle if it is absent.
+ */
+let artAvailable: boolean | null = null;
+export function useArtAvailable(): boolean | null {
+  return useSyncExternalStore(l => { listeners.add(l); return () => listeners.delete(l); }, () => artAvailable, () => artAvailable);
+}
+if (typeof window !== 'undefined') {
+  fetch(cardImage('ST01-001'), { method: 'HEAD', cache: 'no-store' })
+    .then(r => { artAvailable = r.ok && (r.headers.get('content-type') ?? '').includes('image'); })
+    .catch(() => { artAvailable = false; })
+    .finally(() => { settings = { ...settings }; listeners.forEach(l => l()); });
+}
 
 /**
  * Track images that failed to load so we fall back to text cards without flicker.

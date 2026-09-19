@@ -2,7 +2,7 @@ import type { CardInstance, UnitState, BaseState, PlayerId } from '../game/types
 import type { GameState } from '../game/types';
 import { CARDS } from '../game/cards';
 import { baseHp, baseMaxHp, cardName, isLinked, pilotName, unitAp, unitHp, unitKeywords, unitLevel, unitMaxHp } from '../game/engine';
-import { cardImage, isMissing, markMissing, setPeek, useSettings } from './settings';
+import { cardImage, isMissing, markMissing, setPeek, useArtAvailable, useSettings } from './settings';
 
 /** Called when a card's magnifier is clicked: opens the full-size inspector. */
 export let openInspector: (defId: string) => void = () => {};
@@ -38,7 +38,8 @@ function highlight(line: string) {
 /** Whether to show the printed card art for this card id. */
 function useArt(defId: string): boolean {
   const s = useSettings();
-  return s.art && !isMissing(defId);
+  const available = useArtAvailable();
+  return s.art && available !== false && !isMissing(defId);
 }
 
 /** The printed card image; a load failure marks the card so it falls back to the text card. */
