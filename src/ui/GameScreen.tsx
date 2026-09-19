@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Action, GameState, PlayerId, UnitState } from '../game/types';
 import { CARDS } from '../game/cards';
-import { activateOptions, applyAction, attackTargets, canAttackThisTurn, canPlay, cardName, commandTargets, other, unitName, whoseDecision } from '../game/engine';
+import { activateOptions, applyAction, attackTargets, baseHp, baseMaxHp, canAttackThisTurn, canPlay, cardName, commandTargets, findUnit, isLinked, other, pilotName, unitAp, unitHp, unitKeywords, unitMaxHp, unitName, whoseDecision } from '../game/engine';
 import { aiNextAction } from '../game/ai';
 import { coachTips, detectSkills, filterTips, loadSkills, reviewTurn, SKILLS, type CoachMode, type SkillProgress, type Tip } from '../game/coach';
 import { Board } from './Board';
-import { BigCard, CardText, HandCard, UnitCard, setInspectorOpener } from './CardView';
+import { BigCard, CardText, HandCard, UnitCard, setInspectorOpener, type LiveInfo } from './CardView';
 import type { Zone } from '../learn/lessons';
 import { CARD_WIDTH, setSetting, useArtAvailable, usePeek, useSettings, type CardSize } from './settings';
 
@@ -452,7 +452,7 @@ export function GameScreen({ game, highlightZones, sidePanel, showCoach = true, 
             </div>
           )}
           {peek && !drag?.active && modal?.kind !== 'inspect' && modal?.kind !== 'handView' && (
-            <div className="peek-panel"><BigCard defId={peek} /></div>
+            <div className="peek-panel"><BigCard defId={peek.defId} live={liveInfo(state, peek.uid)} tokenName={peek.uid !== undefined ? findUnit(state, peek.uid)?.unit.card.token?.name : undefined} /></div>
           )}
           {modal?.kind === 'attack' && (
             <div className="float-hint">
@@ -481,6 +481,23 @@ export function GameScreen({ game, highlightZones, sidePanel, showCoach = true, 
       </div>
     </div>
   );
+}
+
+/** Live stats for a Unit or Base on the board, for the hover preview. */
+function liveInfo(state: GameState, uid?: number): LiveInfo | undefined {
+  if (uid === undefined) return undefined;
+  const f = findUnit(state, uid);
+  if (f) {
+    const u = f.unit;
+    const kw = unitKeywords(u) as ReturnType<typeof unitKeywords> & { suppression?: boolean };
+    const keywords = [kw.repair && `Repair ${kw.repair}`, kw.breach && `Breach ${kw.breach}`, kw.support && `Support ${kw.support}`, kw.blocker && 'Blocker', kw.firstStrike && 'First Strike', kw.highManeuver && 'High-Maneuver', kw.suppression && 'Suppression'].filter(Boolean) as string[];
+    return { ap: unitAp(state, u, f.owner), baseAp: u.card.token ? u.card.token.ap : CARDS[u.card.defId].ap, hp: unitHp(u), maxHp: unitMaxHp(u), damage: u.damage, rested: u.rested, canAttack: f.owner === state.active ? canAttackThisTurn(state, u) : undefined, pilot: u.pilot ? pilotName(u.pilot) : undefined, linked: isLinked(u), keywords, token: !!u.card.token };
+  }
+  for (const p of ['p1', 'p2'] as PlayerId[]) {
+    const b = state.players[p].base;
+    if (b && b.card.uid === uid) return { ap: 0, hp: baseHp(b), maxHp: baseMaxHp(b), damage: b.damage, rested: b.rested };
+  }
+  return undefined;
 }
 
 interface DragState { kind: 'hand' | 'unit'; uid: number; startX: number; startY: number; x: number; y: number; active: boolean; hover: string | null }

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { LESSONS, type QuizQuestion } from '../learn/lessons';
+import { GLOSSARY } from '../learn/glossary';
 
 export function Quiz({ questions, onFinish }: { questions: QuizQuestion[]; onFinish?: (score: number) => void }) {
   const [answers, setAnswers] = useState<Record<number, number>>({});
@@ -43,33 +44,6 @@ const EXTRA: QuizQuestion[] = [
   { q: 'Opponent has 0 Shields and a 5 HP Base. Your 4 AP Unit attacks the player and is not blocked. Result?', options: ['You win', 'Base takes 4 damage', 'A Shield is destroyed'], answer: 1, why: 'The Base is still in the shield area and absorbs the attack. You win only when the shield area is empty (8-5-2).' },
 ];
 
-export const GLOSSARY: [string, string][] = [
-  ['Active / Rested', 'Upright cards are active; sideways cards are rested. Attacking rests a Unit; paying costs rests Resources. Everything re-activates in your Start Phase.'],
-  ['Lv. (Level)', 'Minimum number of Resources you must have in play to play the card. Rested Resources still count.'],
-  ['Cost', 'Number of active Resources you rest to play the card.'],
-  ['EX Base', '0 AP / 3 HP Base token each player starts with. Absorbs attacks until destroyed.'],
-  ['EX Resource', 'Bonus Resource token for Player Two (and from effects). Counts toward Level; removed from the game when spent.'],
-  ['Shield', 'Face-down card in your shield area. 1 HP each. Destroyed Shields are revealed and may trigger 【Burst】.'],
-  ['Link Unit', 'A Unit paired with a Pilot that meets its link requirement. Can attack the turn it is deployed.'],
-  ['Pair', 'Place a Pilot (or a Command with a 【Pilot】 effect) under a Unit. Permanent until the Unit leaves.'],
-  ['<Repair X>', 'At the end of your turn, this Unit recovers X HP.'],
-  ['<Breach X>', 'When this Unit destroys an enemy Unit with battle damage on your turn, deal X damage to their Base or top Shield.'],
-  ['<Support X>', 'Rest this Unit in your Main Phase: another friendly Unit gets AP+X this turn.'],
-  ['<Blocker>', 'When an enemy attacks, rest this active Unit to become the attack target instead. Once per attack.'],
-  ['<First Strike>', 'When attacking, deals battle damage before the defender. If the defender dies, it deals no damage back.'],
-  ['<High-Maneuver>', 'While this Unit attacks, enemy Units cannot use <Blocker>.'],
-  ['<Suppression>', 'When this Unit deals battle damage to a Shield, it damages the first two Shields at once.'],
-  ['【Deploy】', 'Triggers when the card enters the battle area or base section.'],
-  ['【Attack】', 'Triggers when the Unit declares an attack.'],
-  ['【Destroyed】', 'Triggers when the Unit or Base is destroyed.'],
-  ['【When Paired】 / 【During Pair】', 'Triggers when a Pilot is paired / active while a Pilot is paired.'],
-  ['【When Linked】 / 【During Link】', 'Same, but only for a Pilot that meets the link requirement.'],
-  ['【Main】 / 【Action】', 'Command timing: your Main Phase / any action step (during battles or the End Phase).'],
-  ['【Activate･Main】 / 【Activate･Action】', 'Effects you choose to activate, sometimes with a cost like ②. Once per Turn if marked.'],
-  ['【Burst】', 'Free effect you may activate when this card is destroyed as a Shield and revealed.'],
-  ['Battle steps', 'Attack → Block → Action → Damage → Battle end.'],
-  ['Turn phases', 'Start → Draw → Resource → Main → End.'],
-];
 
 export function DrillScreen({ onExit }: { onExit: () => void }) {
   const [tab, setTab] = useState<'drill' | 'glossary'>('drill');

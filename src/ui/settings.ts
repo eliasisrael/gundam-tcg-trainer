@@ -75,9 +75,14 @@ if (typeof window !== 'undefined') {
 }
 
 /** Card currently hovered anywhere in the UI, for the large preview panel. */
-let peek: string | null = null;
+export interface Peek { defId: string; uid?: number }
+let peek: Peek | null = null;
 const peekListeners = new Set<() => void>();
-export function setPeek(defId: string | null) { if (peek === defId) return; peek = defId; peekListeners.forEach(l => l()); }
-export function usePeek(): string | null {
+export function setPeek(defId: string | null, uid?: number) {
+  if ((peek?.defId ?? null) === defId && peek?.uid === uid) return;
+  peek = defId ? { defId, uid } : null;
+  peekListeners.forEach(l => l());
+}
+export function usePeek(): Peek | null {
   return useSyncExternalStore(l => { peekListeners.add(l); return () => peekListeners.delete(l); }, () => peek, () => peek);
 }
