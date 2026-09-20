@@ -394,3 +394,44 @@ p { margin: .4em 0; }
 .glossary-box { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
 .gloss { color: #c3c9d4; line-height: 1.35; }
 .peek-panel { max-height: calc(100vh - 80px); overflow: hidden; }
+
+/* ---------- fit-the-screen layout: sticky hand strip, compact board ---------- */
+.board-wrap { padding-bottom: 0; }
+.hand-zone { position: sticky; bottom: 0; z-index: 12; margin: 8px -14px 0; padding: 6px 14px 8px; border-radius: 12px 12px 0 0; background: rgba(14,17,22,.97); box-shadow: 0 -8px 24px rgba(0,0,0,.45); }
+.hand { flex-wrap: nowrap; overflow-x: auto; overflow-y: visible; padding: 4px 2px 6px; gap: 8px; scrollbar-width: thin; }
+.hand .card { flex: none; }
+.hand .card.hand-card:not(.with-art) { min-height: 0; width: calc(var(--card-w) * 0.95); }
+.card.hand-card .card-text.compact { display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; font-size: 10px; }
+.card.hand-card:hover .card-text.compact { -webkit-line-clamp: unset; line-clamp: unset; }
+.card.unit:not(.with-art) { min-height: 96px; }
+.card.unit:not(.with-art) .card-kws, .card.unit:not(.with-art) .card-text { font-size: 10px; }
+.battle { min-height: 120px; }
+.units { min-height: 96px; }
+.sheet { gap: 6px; }
+.board.mat { gap: 6px; }
+.opp-hand-row { padding: 2px 10px; }
+.opp-hand-row .hand-backs { min-height: 26px; }
+.opp-hand-row .card-back { height: 26px; width: 20px; }
+.topbar { flex-wrap: wrap; row-gap: 6px; }
+.topbar .title { flex: 1 1 200px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 760px) {
+  :root { --card-w: 96px; }
+  .topbar { padding: 6px 8px; gap: 6px; }
+  .topbar .title { display: none; }
+  .speed, .art-toggle { font-size: 11px; }
+  .side-panel { max-height: 45vh; }
+  .peek-panel { display: none; }
+  .hand-zone { margin: 8px -14px 0; }
+  .sheet, .sheet.opp { grid-template-columns: 84px minmax(0, 1fr) 56px; }
+  .shield-stack.vertical .card-back.shield { width: 40px; height: 18px; margin-top: -9px; }
+  .opp-shield-col .shield-stack.vertical .card-back.shield { margin-top: 0; margin-bottom: -9px; }
+  .deck-pile { width: 38px; height: 50px; font-size: 12px; }
+  .deck-pile.small { width: 32px; height: 42px; }
+  .zone { padding: 4px 6px; }
+  .zone-label { font-size: 10px; }
+}
+/* Short or very narrow windows: keep the hand strip from swallowing the board. */
+@media (max-height: 640px), (max-width: 480px) {
+  .hand-zone { position: static; margin: 8px 0 0; box-shadow: none; }
+  .hand .card.hand-card:not(.with-art) { width: 92px; }
+}

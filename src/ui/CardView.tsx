@@ -72,7 +72,7 @@ export function HandCard({ card, onClick, selected, disabled, reason, drag, anim
           {(d.type === 'UNIT' || d.type === 'BASE') && <div className="card-stats">{d.type === 'UNIT' ? `${d.ap} AP` : ''} {d.hp} HP</div>}
           {(d.type === 'PILOT' || (d.type === 'COMMAND' && d.pilotName)) && <div className="card-stats mod">{d.ap ? `+${d.ap} AP` : ''} {d.hp ? `+${d.hp} HP` : ''}</div>}
           {d.link && <div className="card-link">Link: {d.link.join(' / ')}</div>}
-          <CardText text={d.text} />
+          <div className="card-text compact"><CardText text={d.text} /></div>
         </>
       )}
     </button>

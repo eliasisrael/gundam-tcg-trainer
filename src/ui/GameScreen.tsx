@@ -299,6 +299,12 @@ export function GameScreen({ game, highlightZones, sidePanel, showCoach = true, 
   useEffect(() => {
     if (!drag) return;
     const move = (e: PointerEvent) => {
+      // Auto-scroll the board when dragging near its top or bottom edge, so a hand card can reach the Battle Area.
+      const wrap = document.querySelector<HTMLElement>('.board-wrap');
+      if (wrap && drag.active) {
+        const r = wrap.getBoundingClientRect();
+        if (e.clientY < r.top + 70) wrap.scrollTop -= 14; else if (e.clientY > r.bottom - 70) wrap.scrollTop += 14;
+      }
       setDrag(d => {
         if (!d) return d;
         const active = d.active || Math.hypot(e.clientX - d.startX, e.clientY - d.startY) > 8;
