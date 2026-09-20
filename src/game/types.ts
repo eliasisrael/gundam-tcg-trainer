@@ -71,7 +71,11 @@ export interface UnitState {
   flags?: {
     canTargetActive?: { maxLv?: number; maxAp?: number; damagedOnly?: boolean };
     cantAttackThisTurn?: boolean;
+    /** Can't receive battle damage from enemy Units of this Lv. or lower this turn (Fierce Unity). */
+    immuneFromLvMax?: number;
   };
+  /** Won't be set active during its owner's next start phase (Jegan Man Hunter). Survives cleanup. */
+  skipNextActivate?: boolean;
 }
 
 export interface BaseState {

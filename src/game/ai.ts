@@ -76,6 +76,14 @@ function aiChoose(state: GameState, ai: PlayerId): { id: string | null; reason: 
     case 'lookTop': { const pick = opts.find(o => o.id.startsWith('deck:')); return pick ? { id: pick.id, reason: `Adding ${pick.label} to hand.` } : { id: 'pass', reason: 'No Zeon Unit among the top cards.' }; }
     case 'tokenChoice': { const enemyKill = state.players[other(ai)].units.some(u => u.rested && unitHp(u) <= 4); return { id: enemyKill ? 'T-010' : 'T-009', reason: enemyKill ? 'Sword Strike can kill a rested enemy Unit.' : 'Launcher Strike is the sturdier Blocker.' }; }
     case 'fromTrash': return { id: opts[0].id, reason: `Recovering ${opts[0].label} from the trash.` };
+    case 'targetMulti': {
+      const units = opts.filter(o => o.id.startsWith('unit:'));
+      if (!units.length) return { id: 'pass', reason: 'Done.' };
+      const pick = [...units].sort((a, b) => score(unitOf(b.id)!.unit) - score(unitOf(a.id)!.unit))[0];
+      return { id: pick.id, reason: `${pick.label} benefits most.` };
+    }
+    case 'topKeep': return { id: 'top', reason: 'Keeping the top card.' };
+    case 'penelope': { const pick = opts.find(o => o.id.startsWith('hand:')); return pick && ps.hand.length >= 2 ? { id: pick.id, reason: `Cycling ${pick.label} for two fresh cards.` } : { id: 'pass', reason: 'Keeping my hand.' }; }
     case 'discardOne': { const pick = [...opts].sort((a, b) => CARDS[ps.hand.find(h => h.uid === Number(b.id.split(':')[1]))!.defId].level - CARDS[ps.hand.find(h => h.uid === Number(a.id.split(':')[1]))!.defId].level)[0]; return { id: pick.id, reason: `${pick.label} is the card I can least afford to play soon.` }; }
     default: return { id: opts[0]?.id ?? null, reason: 'First option.' };
   }
@@ -152,6 +160,8 @@ function planBasic(state: GameState, ai: PlayerId): AiDecision {
     if (o.effectKey === 'whiteBase' && spare >= 2 && !units.length) return say({ type: 'activateMain', player: ai, uid: o.uid, effectKey: o.effectKey }, 'Nothing else to play, so White Base turns 2 spare Resources into a token Unit.');
     if (o.effectKey === 'asticassia' && ps.units.some(u => isLinked(u) && canAttackThisTurn(state, u))) return say({ type: 'activateMain', player: ai, uid: o.uid, effectKey: o.effectKey }, 'Resting Asticassia before I attack gives my Link Units +1 AP.');
     if (o.effectKey === 'tallgeese' && spare >= 4) return say({ type: 'activateMain', player: ai, uid: o.uid, effectKey: o.effectKey }, 'Paying 4 to reactivate Tallgeese lets it attack a second time.');
+    if (o.effectKey === 'clanBattle' && readyAttackers.length && !state.turnFlags.attacked) return say({ type: 'activateMain', player: ai, uid: o.uid, effectKey: o.effectKey }, 'Clan Battle: a free +2 AP before my attacks.');
+    if (o.effectKey === 'davao' && spare >= 2 && !ps.hand.some(c => CARDS[c.defId].type === 'UNIT' && playable(c))) return say({ type: 'activateMain', player: ai, uid: o.uid, effectKey: o.effectKey }, 'Davao heals a damaged Unit with spare Resources.');
   }
 
   // 6. Attacks.
@@ -336,11 +346,13 @@ function planAdvanced(state: GameState, ai: PlayerId): AiDecision {
     if (o.effectKey === 'isaribi') buffs.push({ n: 2, act: { type: 'activateMain', player: ai, uid: o.uid, effectKey: o.effectKey }, label: 'Isaribi', uid: null });
     if (o.effectKey === 'cgs') buffs.push({ n: 1, act: { type: 'activateMain', player: ai, uid: o.uid, effectKey: o.effectKey }, label: 'CGS Mobile Worker', uid: o.uid });
     if (o.effectKey === 'asticassia') buffs.push({ n: 1, act: { type: 'activateMain', player: ai, uid: o.uid, effectKey: o.effectKey }, label: 'Asticassia', uid: null });
+    if (o.effectKey === 'clanBattle') buffs.push({ n: 2, act: { type: 'activateMain', player: ai, uid: o.uid, effectKey: o.effectKey }, label: 'Clan Battle', uid: null });
   }
   for (const c of hand) {
     const d = CARDS[c.defId];
     if (d.id === 'ST03-012' && playable(c)) buffs.push({ n: 2, act: { type: 'playCard', player: ai, uid: c.uid }, label: 'Indignation', uid: null });
     if (d.id === 'ST05-013' && playable(c)) buffs.push({ n: 3, act: { type: 'playCard', player: ai, uid: c.uid }, label: 'With Iron and Blood', uid: null });
+    if (d.id === 'ST06-011' && playable(c)) buffs.push({ n: 2, act: { type: 'playCard', player: ai, uid: c.uid }, label: 'Ruthless Tactics', uid: null });
   }
   if (buffs.length && !state.turnFlags.attacked) {
     for (const b of buffs) {
@@ -397,7 +409,10 @@ function planAdvanced(state: GameState, ai: PlayerId): AiDecision {
     if (o.effectKey === 'whiteBase' && spare >= 2) return say({ type: 'activateMain', player: ai, uid: o.uid, effectKey: o.effectKey }, 'Spare Resources become a token Unit.');
     if (o.effectKey === 'tallgeese' && spare >= 4 && attacks.length === 0) return say({ type: 'activateMain', player: ai, uid: o.uid, effectKey: o.effectKey }, 'Reactivating Tallgeese for a second attack.');
     if (o.effectKey === 'archangel' && spare >= 2) return say({ type: 'activateMain', player: ai, uid: o.uid, effectKey: o.effectKey }, 'Archangel stands my Blocker back up to defend.');
+    if (o.effectKey === 'davao' && spare >= 2) return say({ type: 'activateMain', player: ai, uid: o.uid, effectKey: o.effectKey }, 'Davao heals a damaged Unit with spare Resources.');
   }
+  // Cheap selection commands when nothing else to do
+  for (const c of hand) { const d = CARDS[c.defId]; if ((d.id === 'ST06-012' || d.id === 'ST07-014') && playable(c) && spare >= 1) return say({ type: 'playCard', player: ai, uid: c.uid }, `${d.name} digs for a Unit or Pilot.`); }
   const held = ps.units.filter(u => canAttackThisTurn(state, u));
   const worst = attacks[0];
   return say({ type: 'endMain', player: ai }, held.length && worst ? `Holding ${held.map(unitName).join(', ')}: the best attack available (${worst.why}) is not worth it. Ending my turn.` : spare > 0 ? `Nothing useful left for ${spare} Resource(s). Ending my turn.` : 'Ending my turn.');

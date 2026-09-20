@@ -175,18 +175,26 @@ export function isLinked(u: UnitState): boolean {
   });
 }
 
-export function unitKeywords(u: UnitState): Keywords {
+export function unitKeywords(u: UnitState, state?: GameState): Keywords {
   const base = u.card.token ? (u.card.token.keywords ?? {}) : (unitDef(u)?.keywords ?? {});
   const t = u.tempKeywords;
   let highManeuver = base.highManeuver || t.highManeuver;
   let suppression = false;
+  let blocker = base.blocker || t.blocker;
   if (u.card.defId === 'ST03-001' && u.pilot) highManeuver = true;          // Sinanju: During Pair
   if (u.card.defId === 'ST05-001' && u.damage > 0) suppression = true;      // Barbatos 4th: while damaged
+  if (state) {
+    const f = findUnit(state, u.card.uid);
+    if (f) {
+      if (u.card.defId === 'ST07-004' && state.players[f.owner].units.some(x => x.pilot && pilotTraits(x.pilot).includes('CB'))) blocker = true; // Virtue: while a CB Pilot is in play
+      if (u.card.defId === 'ST08-008' && state.players[other(f.owner)].units.length >= 3) blocker = true;                                       // Gustav Karl: while 3+ enemy Units
+    }
+  }
   return {
     repair: (base.repair ?? 0) + (t.repair ?? 0) || undefined,
     breach: (base.breach ?? 0) + (t.breach ?? 0) || undefined,
     support: (base.support ?? 0) + (t.support ?? 0) || undefined,
-    blocker: base.blocker || t.blocker,
+    blocker,
     firstStrike: base.firstStrike || t.firstStrike,
     highManeuver,
     ...(suppression ? { suppression: true } : {}),
@@ -199,6 +207,8 @@ export function unitAp(state: GameState, u: UnitState, owner: PlayerId): number 
   ap += u.tempAp;
   if (u.pilot && u.pilot.defId === 'ST02-010' && isLinked(u)) ap += 1;       // Heero: During Link
   if (u.card.defId === 'ST05-002' && u.damage > 0) ap += 2;                  // Barbatos 2nd: while damaged
+  if (u.card.defId === 'ST07-005' && isLinked(u)) ap += 2;                   // Dynames: During Link
+  if (u.card.defId === 'ST07-007' && state.active === owner && state.players[owner].units.some(x => x.pilot && pilotTraits(x.pilot).includes('CB'))) ap += 2; // Kyrios
   if (state.active === owner) {
     for (const g of state.players[owner].units) if (g.card.defId === 'ST01-001' && g.pilot) ap += 1; // Gundam During Pair
   }
@@ -226,13 +236,24 @@ export function canAttackThisTurn(state: GameState, u: UnitState): boolean {
   return true;
 }
 
+/** A card's Level and cost as they apply right now (Ξ Gundam gets cheaper per enemy Unit). */
+export function effectiveLevelCost(state: GameState, p: PlayerId, card: CardInstance): { level: number; cost: number } {
+  const d = CARDS[card.defId];
+  if (d.id === 'ST08-001' && !state.players[p].units.some(u => unitLevel(u) >= 6)) {
+    const n = state.players[other(p)].units.length;
+    return { level: Math.max(0, d.level - n), cost: Math.max(0, d.cost - n) };
+  }
+  return { level: d.level, cost: d.cost };
+}
+
 /** Whether a card in hand can be played right now (level + cost + targets). */
 export function canPlay(state: GameState, p: PlayerId, card: CardInstance, asPilot = false): { ok: boolean; reason?: string } {
   const ps = state.players[p];
   const d = CARDS[card.defId];
+  const { level, cost } = effectiveLevelCost(state, p, card);
   if (state.phase !== 'main' || state.active !== p || state.battle || state.pending) return { ok: false, reason: 'Not your main phase' };
-  if (playerLevel(ps) < d.level) return { ok: false, reason: `Needs Lv.${d.level} (you have ${playerLevel(ps)} Resources)` };
-  if (activeResources(ps) < d.cost) return { ok: false, reason: `Costs ${d.cost}, you have ${activeResources(ps)} active Resources` };
+  if (playerLevel(ps) < level) return { ok: false, reason: `Needs Lv.${level} (you have ${playerLevel(ps)} Resources)` };
+  if (activeResources(ps) < cost) return { ok: false, reason: `Costs ${cost}, you have ${activeResources(ps)} active Resources` };
   if (d.type === 'PILOT' || (d.type === 'COMMAND' && asPilot)) {
     if (d.type === 'COMMAND' && !d.pilotName) return { ok: false, reason: 'Not a Pilot card' };
     if (!ps.units.some(u => !u.pilot)) return { ok: false, reason: 'No Unit without a Pilot to pair with' };
@@ -264,6 +285,11 @@ export function commandTargets(state: GameState, p: PlayerId, defId: string): Un
     case 'ST04-014': return me.units.filter(u => unitLevel(u) <= 2);   // Magic Bullet of Dusk
     case 'ST05-013': return me.units;                                   // With Iron and Blood
     case 'ST05-014': return op.units.filter(u => unitLevel(u) <= 3);   // Fatal Strike
+    case 'ST06-011': return me.units.filter(u => hasTrait(u, 'Clan'));  // Ruthless Tactics
+    case 'ST06-013': return state.battle || state.active === p ? me.units.filter(u => hasTrait(u, 'Clan')) : []; // Fierce Unity (Action)
+    case 'ST07-013': return state.battle && findUnit(state, state.battle.attackerUid)?.owner !== p ? me.units.filter(u => u.rested && hasTrait(u, 'CB')) : []; // Armed Intervention
+    case 'ST08-012': return me.units.filter(isLinked);                   // Words for Hathaway
+    case 'ST08-013': return op.units;                                    // Lady Luck
     default: return null;
   }
 }
@@ -286,7 +312,7 @@ function unitOption(state: GameState, u: UnitState, owner: PlayerId): ChoiceOpti
 
 // ---------- generic unit effects ----------
 
-export type UnitOp = 'rest' | 'damage' | 'recover' | 'ap' | 'apBattle' | 'breach' | 'firstStrike' | 'bounce' | 'destroy' | 'selfDamageAp' | 'immuneBattle' | 'reactivateNoAttack' | 'targetActiveLv';
+export type UnitOp = 'rest' | 'damage' | 'recover' | 'ap' | 'apBattle' | 'breach' | 'firstStrike' | 'bounce' | 'destroy' | 'selfDamageAp' | 'immuneBattle' | 'reactivateNoAttack' | 'targetActiveLv' | 'targetActiveAp' | 'targetDamagedActive' | 'skipActivate' | 'immuneLvTurn' | 'redirect';
 export interface UnitEffect { op: UnitOp; amount?: number }
 
 export function describeEffect(e: UnitEffect): string {
@@ -304,6 +330,11 @@ export function describeEffect(e: UnitEffect): string {
     case 'immuneBattle': return `It can't receive battle damage from Units with ${e.amount} or less AP this battle`;
     case 'reactivateNoAttack': return "Set it as active; it can't attack this turn";
     case 'targetActiveLv': return `This turn it may attack active enemy Units of Lv.${e.amount} or lower`;
+    case 'targetActiveAp': return `This turn it may attack active enemy Units with ${e.amount} or less AP`;
+    case 'targetDamagedActive': return 'This turn it may attack damaged active enemy Units';
+    case 'skipActivate': return "It won't be set active during its owner's next start phase";
+    case 'immuneLvTurn': return `It can't receive battle damage from enemy Units of Lv.${e.amount} or lower this turn`;
+    case 'redirect': return 'The attacking Unit now targets it';
   }
 }
 
@@ -326,7 +357,45 @@ function applyUnitEffect(state: GameState, actor: PlayerId, t: UnitState, e: Uni
     case 'immuneBattle': if (state.battle) { (state.battle.immune ??= []).push({ uid: t.card.uid, apMax: e.amount ?? 0 }); log(state, `${source}: ${name} can't be damaged by Units with ${e.amount} or less AP this battle.`, 'effect', actor); } break;
     case 'reactivateNoAttack': t.rested = false; (t.flags ??= {}).cantAttackThisTurn = true; log(state, `${source}: ${name} is set as active (it can't attack this turn).`, 'effect', actor); break;
     case 'targetActiveLv': (t.flags ??= {}).canTargetActive = { maxLv: e.amount }; log(state, `${source}: ${name} may attack active enemy Units of Lv.${e.amount} or lower this turn.`, 'effect', actor); break;
+    case 'targetActiveAp': (t.flags ??= {}).canTargetActive = { maxAp: e.amount }; log(state, `${source}: ${name} may attack active enemy Units with ${e.amount} or less AP this turn.`, 'effect', actor); break;
+    case 'targetDamagedActive': (t.flags ??= {}).canTargetActive = { damagedOnly: true }; log(state, `${source}: ${name} may attack damaged active enemy Units this turn.`, 'effect', actor); break;
+    case 'skipActivate': t.skipNextActivate = true; log(state, `${source}: ${name} won't be set active next start phase.`, 'effect', actor); break;
+    case 'immuneLvTurn': (t.flags ??= {}).immuneFromLvMax = e.amount; log(state, `${source}: ${name} can't be damaged in battle by Units of Lv.${e.amount} or lower this turn.`, 'effect', actor); break;
+    case 'redirect': if (state.battle) { state.battle.target = t.card.uid; state.battle.blocked = true; log(state, `${source}: the attack is redirected to ${name}.`, 'effect', actor); } break;
   }
+}
+
+/** Choose up to `max` distinct Units (first is required, the rest optional). */
+function chooseUnits(state: GameState, actor: PlayerId, title: string, targets: UnitState[], e: UnitEffect, source: string, max: number) {
+  if (!targets.length) { log(state, `${source}: no valid target.`, 'effect', actor); return; }
+  if (state.players[actor].isAI) {
+    const picked = [...targets].sort((a, b) => unitAp(state, b, actor) - unitAp(state, a, actor)).slice(0, max);
+    for (const t of picked) applyUnitEffect(state, actor, t, e, source);
+    return;
+  }
+  pushChoice(state, { kind: 'targetMulti', player: actor, title, description: `${describeEffect(e)}. Choose up to ${max}.`, options: targets.map(t => unitOption(state, t, findUnit(state, t.card.uid)!.owner)), ctx: { e, source, remaining: max, chosen: [] as number[], pool: targets.map(t => t.card.uid) } });
+}
+
+/** Draw caused by a card effect (not the draw phase). Lane Aim reacts to it. */
+function effectDraw(state: GameState, p: PlayerId, n: number) {
+  draw(state, p, n);
+  for (const u of state.players[p].units) {
+    if (u.pilot?.defId === 'ST08-011' && !u.card.token && CARDS[u.card.defId].color === 'Blue' && !u.tempKeywords.highManeuver) {
+      u.tempKeywords.highManeuver = true;
+      log(state, `Lane Aim: ${unitName(u)} gains <High-Maneuver> this turn.`, 'effect', p);
+    }
+  }
+}
+
+/** Look at the top N cards; the player may add one matching card to hand, the rest go randomly to the bottom. */
+function lookTopPick(state: GameState, p: PlayerId, n: number, filter: (c: CardInstance) => boolean, source: string) {
+  const ps = state.players[p];
+  const top = ps.deck.slice(0, n);
+  if (!top.length) return;
+  const cands = top.filter(filter);
+  log(state, `${source}: ${ps.name} looks at the top ${top.length} card(s).`, 'effect', p);
+  if (ps.isAI) { const pick = [...cands].sort((a, b) => CARDS[b.defId].level - CARDS[a.defId].level)[0] ?? null; lookTopResolve(state, p, top, pick); return; }
+  pushChoice(state, { kind: 'lookTop', player: p, title: `${source}: top ${top.length} card(s). Add one to your hand?`, description: `Top cards: ${top.map(c => CARDS[c.defId].name).join(', ')}. The rest go to the bottom of your deck in random order.`, options: [...cands.map(c => ({ id: `deck:${c.uid}`, label: CARDS[c.defId].name, detail: `Lv.${CARDS[c.defId].level} · ${CARDS[c.defId].type}` })), { id: 'pass', label: 'Take none' }], optional: true, ctx: { uids: top.map(c => c.uid) } });
 }
 
 /** Ask the acting player to choose a Unit for an effect; the bot decides immediately. */
@@ -418,7 +487,11 @@ function startTurn(state: GameState, p: PlayerId) {
   const ps = state.players[p];
   state.phase = 'start';
   log(state, `--- Turn ${state.turn}: ${ps.name} ---`, 'phase', p);
-  for (const u of ps.units) { u.rested = false; u.usedThisTurn = []; }
+  for (const u of ps.units) {
+    u.usedThisTurn = [];
+    if (u.skipNextActivate) { u.skipNextActivate = false; log(state, `${unitName(u)} stays rested (Man Hunter).`, 'effect', p); continue; }
+    u.rested = false;
+  }
   for (const r of ps.resources) r.rested = false;
   if (ps.base) ps.base.rested = false;
   state.phase = 'draw';
@@ -443,6 +516,12 @@ function endTurn(state: GameState) {
       const before = u.damage;
       u.damage = Math.max(0, u.damage - kw.repair);
       log(state, `${unitName(u)} repairs ${before - u.damage} HP (<Repair ${kw.repair}>).`, 'effect', p);
+    }
+  }
+  for (const u of ps.units) {
+    if (u.card.defId === 'ST07-001' && ps.trash.filter(c => CARDS[c.defId].traits.includes('CB')).length >= 7) {
+      const r = ps.resources.find(r => r.rested);
+      if (r) { r.rested = false; log(state, 'Gundam Exia: 7+ (CB) cards in the trash, 1 Resource is set as active.', 'effect', p); }
     }
   }
   state.stats[p].resourcesLeftUnspent.push(activeResources(ps));
@@ -534,6 +613,10 @@ function onDeploy(state: GameState, p: PlayerId, u: UnitState) {
       break;
     }
     case 'ST05-001': chooseUnit(state, p, 'Barbatos 4th Form 【Deploy】: choose 1 of your other Units. 1 damage to it; it gets AP+1 this turn.', state.players[p].units.filter(t => t !== u), { op: 'selfDamageAp', amount: 1 }, 'Barbatos 4th Form'); break;
+    case 'ST06-002': if (state.players[p].units.some(t => t !== u && hasTrait(t, 'Clan'))) chooseUnit(state, p, 'GQuuuuuuX 【Deploy】: choose 1 enemy Unit. Deal 1 damage to it.', enemies, { op: 'damage', amount: 1 }, 'GQuuuuuuX'); break;
+    case 'ST06-007': chooseUnit(state, p, "Ortega's Rick Dom 【Deploy】: choose 1 of your other (Clan) Units. This turn it may attack active enemy Units with 3 or less AP.", state.players[p].units.filter(t => t !== u && hasTrait(t, 'Clan')), { op: 'targetActiveAp', amount: 3 }, "Ortega's Rick Dom"); break;
+    case 'ST08-002': chooseUnit(state, p, 'Ξ Gundam 【Deploy】: choose 1 enemy Unit. Deal 1 damage to it.', enemies, { op: 'damage', amount: 1 }, 'Ξ Gundam'); break;
+    case 'ST08-009': chooseUnit(state, p, "Jegan (Man Hunter) 【Deploy】: choose 1 rested enemy Unit of Lv.2 or lower. It won't be set active next start phase.", enemies.filter(t => t.rested && unitLevel(t) <= 2), { op: 'skipActivate' }, 'Man Hunter'); break;
   }
 }
 
@@ -589,6 +672,7 @@ function deployBase(state: GameState, p: PlayerId, card: CardInstance, fromBurst
     }
     case 'ST03-015': chooseUnit(state, p, 'Rewloola 【Deploy】: choose 1 enemy Unit with 5 or less AP. Deal 1 damage to it.', state.players[op].units.filter(u => unitAp(state, u, op) <= 5), { op: 'damage', amount: 1 }, 'Rewloola'); break;
     case 'ST03-016': if (state.active === p && !fromBurst) { log(state, "Falmel 【Deploy】: a rested Char's Zaku Ⅱ token.", 'effect', p); deployToken(state, p, 'T-006', true); } break;
+    case 'ST08-014': chooseUnit(state, p, 'Valiant 【Deploy】: choose 1 of your Units. It gets AP+2 this turn.', ps.units, { op: 'ap', amount: 2 }, 'Valiant'); break;
   }
 }
 
@@ -603,10 +687,18 @@ function pairPilot(state: GameState, p: PlayerId, pilot: CardInstance, u: UnitSt
   const enemies = state.players[op].units;
   // Unit-side When Paired
   switch (u.card.defId) {
-    case 'ST01-002': if (pilotTraits(pilot).includes('White Base Team')) { log(state, 'Gundam (MA Form) 【When Paired】: draw 1.', 'effect', p); draw(state, p, 1); } break;
+    case 'ST01-002': if (pilotTraits(pilot).includes('White Base Team')) { log(state, 'Gundam (MA Form) 【When Paired】: draw 1.', 'effect', p); effectDraw(state, p, 1); } break;
     case 'ST01-006': chooseUnit(state, p, 'Gundam Aerial 【When Paired】: choose 1 enemy Unit (Lv.5 or lower). It gets AP-3 this turn.', enemies.filter(t => unitLevel(t) <= 5), { op: 'ap', amount: -3 }, 'Gundam Aerial'); break;
     case 'ST04-001': if (pilotLevel(pilot) >= 4) chooseUnit(state, p, "Aile Strike Gundam 【When Paired】: choose 1 enemy Unit with 4 or less HP. Return it to its owner's hand.", enemies.filter(t => unitHp(t) <= 4), { op: 'bounce' }, 'Aile Strike Gundam'); break;
     case 'ST05-007': chooseUnit(state, p, "McGillis' Schwalbe Graze 【When Paired】: choose 1 enemy Unit (Lv.3 or lower). It gets AP-2 this turn.", enemies.filter(t => unitLevel(t) <= 3), { op: 'ap', amount: -2 }, "McGillis' Schwalbe Graze"); break;
+    case 'ST07-001': { // Exia: mill 2, draw 1 if a CB card was milled
+      const milled = ps.deck.splice(0, 2); ps.trash.push(...milled);
+      log(state, `Gundam Exia 【When Paired】: ${milled.map(c => CARDS[c.defId].name).join(', ') || 'nothing'} placed into the trash.`, 'effect', p);
+      if (milled.some(c => CARDS[c.defId].traits.includes('CB'))) effectDraw(state, p, 1);
+      break;
+    }
+    case 'ST08-001': { const maxLv = Math.max(0, ...enemies.map(unitLevel)); chooseUnit(state, p, 'Ξ Gundam 【When Paired】: choose 1 enemy Unit with the highest Lv. Deal 3 damage to it.', enemies.filter(t => unitLevel(t) === maxLv), { op: 'damage', amount: 3 }, 'Ξ Gundam'); break; }
+    case 'ST06-001': if (linked && ps.units.some(t => t !== u && hasTrait(t, 'Clan'))) { u.tempKeywords.firstStrike = true; log(state, 'GQuuuuuuX 【When Linked】: gains <First Strike> this turn.', 'effect', p); } break;
   }
   // Pilot-side When Paired / When Linked
   switch (pilot.defId) {
@@ -625,6 +717,21 @@ function pairPilot(state: GameState, p: PlayerId, pilot: CardInstance, u: UnitSt
       chooseUnit(state, p, 'Mikazuki Augus 【When Paired】: choose 1 enemy Unit. Deal 1 damage to it.', enemies, { op: 'damage', amount: 1 }, 'Mikazuki Augus');
       break;
     case 'ST05-012': if (ps.units.filter(t => t !== u && hasTrait(t, 'Gjallarhorn', 'Tekkadan')).length >= 2) chooseUnit(state, p, 'McGillis Fareed 【When Paired】: choose 1 enemy Unit with 3 or less HP to rest.', enemies.filter(t => unitHp(t) <= 3 && !t.rested), { op: 'rest' }, 'McGillis Fareed'); else log(state, 'McGillis Fareed 【When Paired】: fewer than 2 other Gjallarhorn/Tekkadan Units, no effect.', 'effect', p); break;
+    case 'ST06-009': if (linked) { // Amate: look at the top card; a (Clan) card may go to hand, otherwise to the bottom
+      const top = ps.deck[0];
+      if (top) {
+        const isClan = CARDS[top.defId].traits.includes('Clan');
+        if (!isClan) { ps.deck.shift(); ps.deck.push(top); log(state, `Amate 【When Linked】: the top card is not a (Clan) card; it goes to the bottom.`, 'effect', p); }
+        else lookTopPick(state, p, 1, () => true, 'Amate 【When Linked】');
+      }
+    } break;
+    case 'ST07-011': if (hasTrait(u, 'CB')) applyUnitEffect(state, p, u, { op: 'targetActiveLv', amount: unitLevel(u) }, 'Lockon Stratos 【When Paired】'); break;
+    case 'ST08-010': if (hasTrait(u, 'Mafty')) chooseUnit(state, p, 'Hathaway Noa 【When Paired】: choose 1 of your (Mafty) Units. This turn it may attack damaged active enemy Units.', ps.units.filter(t => hasTrait(t, 'Mafty')), { op: 'targetDamagedActive' }, 'Hathaway Noa'); break;
+  }
+  // Kaneban Co., Ltd.: once per turn, a friendly (Clan) Unit that links gains <Breach 3>
+  if (linked && hasTrait(u, 'Clan') && ps.base?.card.defId === 'ST06-015' && !state.turnFlags['kaneban']) {
+    state.turnFlags['kaneban'] = true;
+    applyUnitEffect(state, p, u, { op: 'breach', amount: 3 }, 'Kaneban Co., Ltd.');
   }
 }
 
@@ -637,8 +744,9 @@ function playCard(state: GameState, p: PlayerId, uid: number, asPilot = false) {
   const chk = canPlay(state, p, card, asPilot);
   if (!chk.ok) { log(state, `Can't play ${cardName(card)}: ${chk.reason}`, 'system', p); return; }
   const d = CARDS[card.defId];
+  const { cost } = effectiveLevelCost(state, p, card);
   ps.hand.splice(ps.hand.indexOf(card), 1);
-  payCost(state, p, d.cost);
+  payCost(state, p, cost);
   state.turnFlags.playedSomething = true;
   if (d.type === 'UNIT') { deployUnit(state, p, card); return; }
   if (d.type === 'BASE') { deployBase(state, p, card); return; }
@@ -700,6 +808,13 @@ function resolveCommand(state: GameState, p: PlayerId, defId: string) {
     case 'ST04-014': ask('choose 1 friendly Unit of Lv.2 or lower.', { op: 'firstStrike' }); break;
     case 'ST05-013': ask('choose 1 of your Units.', { op: 'selfDamageAp', amount: 3 }); break;
     case 'ST05-014': ask('choose 1 enemy Unit of Lv.3 or lower.', { op: 'destroy' }); break;
+    case 'ST06-011': chooseUnits(state, p, 'Ruthless Tactics: choose 1 to 2 friendly (Clan) Units.', targets, { op: 'ap', amount: 2 }, name, 2); break;
+    case 'ST06-012': lookTopPick(state, p, 3, c => (CARDS[c.defId].type === 'UNIT' || CARDS[c.defId].type === 'PILOT') && CARDS[c.defId].traits.includes('Clan'), name); break;
+    case 'ST06-013': chooseUnits(state, p, 'Fierce Unity: choose 1 to 2 friendly (Clan) Units.', targets, { op: 'immuneLvTurn', amount: 2 }, name, 2); break;
+    case 'ST07-013': ask('choose 1 rested friendly (CB) Unit to take the attack.', { op: 'redirect' }); break;
+    case 'ST07-014': lookTopPick(state, p, 3, c => (CARDS[c.defId].type === 'UNIT' || CARDS[c.defId].type === 'PILOT') && CARDS[c.defId].traits.includes('CB'), name); break;
+    case 'ST08-012': ask('choose 1 friendly Link Unit.', { op: 'breach', amount: 1 }); break;
+    case 'ST08-013': ask('choose 1 enemy Unit.', { op: 'damage', amount: ps.units.some(u => isLinked(u) && hasTrait(u, 'Mafty')) ? 2 : 1 }); break;
   }
 }
 
@@ -724,6 +839,8 @@ export function activateOptions(state: GameState, p: PlayerId): ActivateOption[]
     if (id === 'ST04-015') { const used = !!state.turnFlags['archangel']; const has = ps.units.some(u => unitKeywords(u).blocker && u.rested); out.push({ uid, effectKey: 'archangel', label: 'Archangel ②: set a rested Blocker active (it can\'t attack this turn)', cost: 2, ok: !used && spare >= 2 && has, reason: used ? 'Once per turn' : !has ? 'No rested Blocker' : 'Needs 2 active Resources' }); }
     if (id === 'ST04-016') out.push({ uid, effectKey: 'vesalius', label: 'Vesalius: rest Base → a friendly Unit gets AP+1 this turn', cost: 0, ok: !b.rested && ps.units.length > 0, reason: b.rested ? 'Base is rested' : 'No Units' });
     if (id === 'ST05-015') { const has = ps.units.some(u => u.damage > 0); out.push({ uid, effectKey: 'isaribi', label: 'Isaribi: rest Base → a damaged Unit of yours gets AP+2 this turn', cost: 0, ok: !b.rested && has, reason: b.rested ? 'Base is rested' : 'No damaged Units' }); }
+    if (id === 'ST06-014') { const has = ps.units.some(u => isLinked(u) && hasTrait(u, 'Clan')); out.push({ uid, effectKey: 'clanBattle', label: 'Clan Battle: rest Base → a friendly Unit gets AP+2 this turn', cost: 0, ok: !b.rested && has && ps.units.length > 0, reason: b.rested ? 'Base is rested' : 'Needs a (Clan) Link Unit in play' }); }
+    if (id === 'ST08-015') { const used = !!state.turnFlags['davao']; const has = ps.units.some(u => u.damage > 0); out.push({ uid, effectKey: 'davao', label: 'Davao ②: a Unit of yours recovers 2 HP', cost: 2, ok: !used && spare >= 2 && has, reason: used ? 'Once per turn' : !has ? 'No damaged Units' : 'Needs 2 active Resources' }); }
   }
   for (const u of ps.units) {
     const kw = unitKeywords(u);
@@ -758,6 +875,8 @@ function activateMain(state: GameState, p: PlayerId, uid: number, effectKey: str
     case 'isaribi': ps.base!.rested = true; log(state, `${ps.name} rests Isaribi.`, 'effect', p); chooseUnit(state, p, 'Isaribi: choose 1 damaged Unit of yours. It gets AP+2 this turn.', ps.units.filter(u => u.damage > 0), { op: 'ap', amount: 2 }, 'Isaribi'); break;
     case 'support': { const n = unitKeywords(unit!).support ?? 0; unit!.rested = true; log(state, `${ps.name} rests ${unitName(unit!)} for <Support ${n}>.`, 'effect', p); chooseUnit(state, p, `<Support ${n}>: choose 1 other friendly Unit. It gets AP+${n} this turn.`, ps.units.filter(u => u !== unit), { op: 'ap', amount: n }, `<Support ${n}>`); break; }
     case 'cgs': unit!.rested = true; log(state, `${ps.name} rests CGS Mobile Worker.`, 'effect', p); chooseUnit(state, p, 'CGS Mobile Worker: choose 1 of your Units. 1 damage to it; it gets AP+1 this turn.', ps.units, { op: 'selfDamageAp', amount: 1 }, 'CGS Mobile Worker'); break;
+    case 'clanBattle': ps.base!.rested = true; log(state, `${ps.name} rests Clan Battle.`, 'effect', p); chooseUnit(state, p, 'Clan Battle: choose 1 friendly Unit. It gets AP+2 this turn.', ps.units, { op: 'ap', amount: 2 }, 'Clan Battle'); break;
+    case 'davao': payCost(state, p, 2); state.turnFlags['davao'] = true; log(state, `${ps.name} activates Davao.`, 'effect', p); chooseUnit(state, p, 'Davao: choose 1 of your Units. It recovers 2 HP.', ps.units.filter(u => u.damage > 0), { op: 'recover', amount: 2 }, 'Davao'); break;
   }
 }
 
@@ -797,10 +916,11 @@ function onDestroyed(state: GameState, owner: PlayerId, u: UnitState) {
       break;
     }
     case 'ST04-009': // Miguel's Ginn: During Pair + Destroyed, if another Link Unit in play draw 1
-      if (u.pilot && ps.units.some(isLinked)) { log(state, "Miguel's Ginn 【Destroyed】: draw 1.", 'effect', owner); draw(state, owner, 1); }
+      if (u.pilot && ps.units.some(isLinked)) { log(state, "Miguel's Ginn 【Destroyed】: draw 1.", 'effect', owner); effectDraw(state, owner, 1); }
       break;
     case 'ST05-005': chooseUnit(state, owner, 'Gundam Gusion Rebake 【Destroyed】: choose 1 enemy Unit with 4 or less AP to rest.', state.players[op].units.filter(t => unitAp(state, t, op) <= 4 && !t.rested), { op: 'rest' }, 'Gundam Gusion Rebake'); break;
   }
+  if (u.pilot?.defId === 'ST07-010' && state.active !== owner && hasTrait(u, 'CB')) { log(state, "Tieria Erde 【Destroyed】: it is the opponent's turn, draw 1.", 'effect', owner); effectDraw(state, owner, 1); }
 }
 
 function lookTopResolve(state: GameState, p: PlayerId, top: CardInstance[], pick: CardInstance | null) {
@@ -812,13 +932,17 @@ function lookTopResolve(state: GameState, p: PlayerId, top: CardInstance[], pick
 }
 
 /** Damage to the first card in a player's shield area (Base, else top Shield). */
-function damageShieldArea(state: GameState, target: PlayerId, amount: number, sourceLabel: string, opts: { battle: boolean; attackerLevel?: number; suppression?: boolean }): { destroyed: boolean } {
+function damageShieldArea(state: GameState, target: PlayerId, amount: number, sourceLabel: string, opts: { battle: boolean; attackerLevel?: number; suppression?: boolean; attackerIsToken?: boolean }): { destroyed: boolean } {
   const ps = state.players[target];
   if (opts.battle && state.battle?.shieldProtectLvMax !== undefined && opts.attackerLevel !== undefined && opts.attackerLevel <= state.battle.shieldProtectLvMax) {
     log(state, `Peaceful Timbre: ${ps.name}'s shield area can't be damaged by a Lv.${opts.attackerLevel} Unit.`, 'effect', target);
     return { destroyed: false };
   }
   if (ps.base) {
+    if (opts.battle && ps.base.card.defId === 'ST07-015' && opts.attackerLevel !== undefined && opts.attackerLevel <= 3 && !opts.attackerIsToken && ps.units.some(u => u.rested && hasTrait(u, 'CB'))) {
+      log(state, `Ptolemaios can't be damaged by a Lv.${opts.attackerLevel} Unit while a rested (CB) Unit is in play.`, 'effect', target);
+      return { destroyed: false };
+    }
     ps.base.damage += amount;
     log(state, `${sourceLabel} deals ${amount} damage to ${cardName(ps.base.card)} (${Math.max(0, baseHp(ps.base))}/${baseMaxHp(ps.base)} HP).`, 'damage', target);
     if (baseHp(ps.base) <= 0) {
@@ -874,6 +998,7 @@ function resolveBurst(state: GameState, owner: PlayerId, card: CardInstance, act
   // Commands whose Burst differs from their Main
   if (d.id === 'ST04-012') { if (!ps.units.some(u => u.card.token && u.card.token.traits.includes('Earth Alliance'))) deployToken(state, owner, 'T-008'); else log(state, 'Striker Pack Burst: an Earth Alliance token is already in play.', 'effect', owner); return; }
   if (d.id === 'ST05-014') { chooseUnit(state, owner, 'Fatal Strike 【Burst】: choose 1 enemy Unit. Deal 1 damage to it.', state.players[op].units, { op: 'damage', amount: 1 }, 'Fatal Strike'); return; }
+  if (d.id === 'ST07-013') { log(state, 'Armed Intervention 【Burst】: draw 1.', 'effect', owner); effectDraw(state, owner, 1); return; }
   const targets = commandTargets(state, owner, d.id);
   if (targets && targets.length === 0) { log(state, `No valid target for ${d.name}.`, 'effect', owner); return; }
   resolveCommand(state, owner, d.id);
@@ -917,12 +1042,32 @@ function declareAttack(state: GameState, p: PlayerId, attackerUid: number, targe
   switch (u.card.defId) {
     case 'ST03-008': applyUnitEffect(state, p, u, { op: 'ap', amount: 2 }, 'Zaku Ⅱ 【Attack】'); break;
     case 'ST04-006': if (unitAp(state, u, p) >= 5) chooseUnit(state, p, 'Aegis Gundam 【Attack】: choose 1 enemy Unit of Lv.5 or higher. Deal 3 damage to it.', state.players[op].units.filter(t => unitLevel(t) >= 5), { op: 'damage', amount: 3 }, 'Aegis Gundam'); break;
+    case 'ST06-005': chooseUnits(state, p, 'Red Gundam 【Attack】: choose 1 to 2 friendly (Clan) Units. They get AP+2 this turn.', ps.units.filter(t => hasTrait(t, 'Clan')), { op: 'ap', amount: 2 }, 'Red Gundam', 2); break;
+    case 'ST08-004': if (target !== 'player') chooseUnit(state, p, 'Messer Type-F01 【Attack】: choose 1 enemy Unit. Deal 1 damage to it.', state.players[op].units, { op: 'damage', amount: 1 }, 'Messer Type-F01'); break;
+    case 'ST08-006': if (u.pilot && target === 'player' && !u.usedThisTurn.includes('penelope')) {
+      const cands = ps.hand.filter(c => CARDS[c.defId].type === 'UNIT' && CARDS[c.defId].traits.includes('Earth Federation'));
+      if (cands.length) {
+        u.usedThisTurn.push('penelope');
+        if (ps.isAI) { if (ps.hand.length >= 2) { const c = [...cands].sort((a, b) => CARDS[b.defId].level - CARDS[a.defId].level)[0]; ps.hand.splice(ps.hand.indexOf(c), 1); ps.deck.push(c); log(state, `Penelope 【Attack】: ${cardName(c)} returns to the bottom of the deck; draw 2.`, 'effect', p); effectDraw(state, p, 2); } }
+        else pushChoice(state, { kind: 'penelope', player: p, title: 'Penelope 【Attack】: return 1 (Earth Federation) Unit card from your hand to the bottom of your deck to draw 2?', options: [...cands.map(c => ({ id: `hand:${c.uid}`, label: CARDS[c.defId].name, detail: `Lv.${CARDS[c.defId].level}`, ref: { kind: 'hand' as const, uid: c.uid, owner: p } })), { id: 'pass', label: 'Skip' }], optional: true, ctx: {} });
+      }
+    } break;
   }
   // 【Attack】 effects (pilot side)
   switch (u.pilot?.defId) {
     case 'ST01-011': if (!u.usedThisTurn.includes('suletta')) { const r = ps.resources.find(r => r.rested); if (r) { u.usedThisTurn.push('suletta'); r.rested = false; log(state, 'Suletta Mercury 【Attack】: 1 Resource is set as active.', 'effect', p); } } break;
     case 'ST03-011': applyUnitEffect(state, p, u, { op: 'ap', amount: 1 }, 'Char Aznable 【Attack】'); if (isLinked(u)) { u.tempKeywords.highManeuver = true; log(state, "Char Aznable: Link Unit gains <High-Maneuver> (can't be blocked).", 'effect', p); } break;
     case 'ST04-010': chooseUnit(state, p, 'Kira Yamato 【Attack】: choose 1 enemy Unit. It gets AP-2 during this battle.', state.players[op].units, { op: 'apBattle', amount: -2 }, 'Kira Yamato'); break;
+    case 'ST07-009': {
+      if (ps.trash.filter(c => CARDS[c.defId].traits.includes('CB')).length >= 7) { for (const t of ps.units) if (hasTrait(t, 'CB')) t.tempAp += 1; log(state, 'Setsuna F. Seiei 【Attack】: 7+ (CB) cards in the trash, all your (CB) Units get AP+1 this turn.', 'effect', p); }
+      else applyUnitEffect(state, p, u, { op: 'ap', amount: 1 }, 'Setsuna F. Seiei 【Attack】');
+      break;
+    }
+    case 'ST06-010': if (isLinked(u) && ps.units.some(t => hasTrait(t, 'Clan')) && ps.deck.length) {
+      const top = ps.deck[0];
+      if (ps.isAI) { const playable = CARDS[top.defId].level <= playerLevel(ps) + 1; if (!playable) { ps.deck.shift(); ps.deck.push(top); } log(state, `Shuji Itō 【Attack】: looks at the top card and ${playable ? 'keeps it on top' : 'puts it on the bottom'}.`, 'effect', p); }
+      else pushChoice(state, { kind: 'topKeep', player: p, title: `Shuji Itō 【Attack】: the top card of your deck is ${CARDS[top.defId].name}. Keep it on top or put it on the bottom?`, options: [{ id: 'top', label: `Keep ${CARDS[top.defId].name} on top` }, { id: 'bottom', label: 'Put it on the bottom' }], ctx: {} });
+    } break;
   }
   if (state.pending) return; // resume in resolveChoice
   continueBattle(state);
@@ -940,7 +1085,7 @@ function continueBattle(state: GameState) {
   if (b.step === 'attack') {
     b.step = 'block';
     const kw = unitKeywords(atk.unit);
-    const blockers = state.players[defender].units.filter(t => unitKeywords(t).blocker && !t.rested && t.card.uid !== b.target);
+    const blockers = state.players[defender].units.filter(t => unitKeywords(t, state).blocker && !t.rested && t.card.uid !== b.target);
     if (blockers.length && kw.highManeuver) log(state, `<High-Maneuver>: ${unitName(atk.unit)} can't be blocked.`, 'effect', state.active);
     if (blockers.length && !kw.highManeuver) {
       if (state.players[defender].isAI) {
@@ -1044,8 +1189,13 @@ function doBlock(state: GameState, defender: PlayerId, blocker: UnitState) {
   log(state, `${state.players[defender].name} blocks with ${unitName(blocker)}!`, 'attack', defender);
 }
 
-function isImmune(state: GameState, u: UnitState, fromAp: number): boolean {
-  return !!state.battle?.immune?.some(i => i.uid === u.card.uid && fromAp <= i.apMax);
+function isImmune(state: GameState, u: UnitState, fromAp: number, from?: UnitState): boolean {
+  if (state.battle?.immune?.some(i => i.uid === u.card.uid && fromAp <= i.apMax)) return true;
+  if (from && u.flags?.immuneFromLvMax !== undefined && unitLevel(from) <= u.flags.immuneFromLvMax) return true;
+  // Allelujah Haptism: during your turn, while you have a (CB) Link Unit, this Unit can't be damaged by Units with 3 or less AP
+  const f = findUnit(state, u.card.uid);
+  if (f && u.pilot?.defId === 'ST07-012' && state.active === f.owner && fromAp <= 3 && state.players[f.owner].units.some(x => isLinked(x) && hasTrait(x, 'CB'))) return true;
+  return false;
 }
 
 function damageStep(state: GameState) {
@@ -1055,7 +1205,7 @@ function damageStep(state: GameState) {
   const ap = unitAp(state, atk.unit, p);
   const kw = unitKeywords(atk.unit) as Keywords & { suppression?: boolean };
   if (b.target === 'player') {
-    const r = damageShieldArea(state, op, ap, unitName(atk.unit), { battle: true, attackerLevel: unitLevel(atk.unit), suppression: kw.suppression });
+    const r = damageShieldArea(state, op, ap, unitName(atk.unit), { battle: true, attackerLevel: unitLevel(atk.unit), suppression: kw.suppression, attackerIsToken: !!atk.unit.card.token });
     if (r.destroyed && atk.unit.card.defId === 'ST03-001' && state.active === p && !state.winner) {
       chooseUnit(state, p, 'Sinanju: destroyed a shield area card. Choose 1 enemy Unit. Deal 2 damage to it.', state.players[op].units, { op: 'damage', amount: 2 }, 'Sinanju');
     }
@@ -1064,8 +1214,8 @@ function damageStep(state: GameState) {
   const tgt = findUnit(state, b.target)!;
   const tAp = unitAp(state, tgt.unit, op);
   const tName = unitName(tgt.unit), aName = unitName(atk.unit);
-  const dmgToTarget = isImmune(state, tgt.unit, ap) ? 0 : ap;
-  const dmgToAttacker = isImmune(state, atk.unit, tAp) ? 0 : tAp;
+  const dmgToTarget = isImmune(state, tgt.unit, ap, atk.unit) ? 0 : ap;
+  const dmgToAttacker = isImmune(state, atk.unit, tAp, tgt.unit) ? 0 : tAp;
   if (dmgToTarget !== ap) log(state, `${tName} can't receive battle damage from ${aName} (${ap} AP) this battle.`, 'effect', op);
   if (dmgToAttacker !== tAp) log(state, `${aName} can't receive battle damage from ${tName} (${tAp} AP) this battle.`, 'effect', p);
   let attackerDestroyed = false, targetDestroyed = false;
@@ -1094,7 +1244,8 @@ function damageStep(state: GameState) {
       log(state, 'Gundam Heavyarms 【During Pair】: 1 damage to all enemy Units Lv.3 or lower.', 'effect', p);
       for (const e of [...state.players[op].units]) if (unitLevel(e) <= 3) dealEffectDamage(state, op, e, 1);
     }
-    if (atkUnit.pilot?.defId === 'ST02-011' && isLinked(atkUnit)) { log(state, 'Zechs Merquise 【During Link】: draw 1.', 'effect', p); draw(state, p, 1); }
+    if (atkUnit.pilot?.defId === 'ST02-011' && isLinked(atkUnit)) { log(state, 'Zechs Merquise 【During Link】: draw 1.', 'effect', p); effectDraw(state, p, 1); }
+    if (atkUnit.card.defId === 'ST07-005' && findUnit(state, atkUnit.card.uid) && atkUnit.damage > 0) { const before = atkUnit.damage; atkUnit.damage = Math.max(0, atkUnit.damage - 2); log(state, `Gundam Dynames recovers ${before - atkUnit.damage} HP after the kill.`, 'effect', p); }
     if (atkUnit.pilot?.defId === 'ST05-011' && isLinked(atkUnit)) { // Akihiro: Tekkadan Unit Lv<=2 from trash to hand
       const ps = state.players[p];
       const cands = ps.trash.filter(c => CARDS[c.defId].type === 'UNIT' && CARDS[c.defId].level <= 2 && CARDS[c.defId].traits.includes('Tekkadan'));
@@ -1182,6 +1333,22 @@ function aiActionDecision(state: GameState, p: PlayerId, playable: CardInstance[
       case 'ST04-014': // First Strike for Lv<=2
         if (!defending && tgt && unitLevel(atk.unit) <= 2 && atkAp >= unitHp(tgt) && unitAp(state, tgt, op) >= unitHp(atk.unit)) return { card: c, reason: `First Strike: ${unitName(atk.unit)} kills first and takes nothing back.` };
         break;
+      case 'ST06-011': // Ruthless Tactics +2 (Clan)
+        if (!defending && tgt && hasTrait(atk.unit, 'Clan') && atkAp < unitHp(tgt) && atkAp + 2 >= unitHp(tgt)) return { card: c, reason: `+2 AP lets ${unitName(atk.unit)} destroy ${unitName(tgt)}.` };
+        if (defending && tgt && hasTrait(tgt, 'Clan') && unitAp(state, tgt, p) < unitHp(atk.unit) && unitAp(state, tgt, p) + 2 >= unitHp(atk.unit)) return { card: c, reason: `+2 AP lets ${unitName(tgt)} destroy the attacker.` };
+        break;
+      case 'ST06-013': // Fierce Unity: immune from Lv<=2 attackers
+        if (defending && tgt && hasTrait(tgt, 'Clan') && unitLevel(atk.unit) <= 2 && unitHp(tgt) <= atkAp) return { card: c, reason: `${unitName(tgt)} becomes immune to the Lv.${unitLevel(atk.unit)} attacker.` };
+        break;
+      case 'ST07-013': { // Armed Intervention: redirect to a rested CB unit that survives or trades well
+        if (!defending) break;
+        const wall = state.players[p].units.find(u => u.rested && hasTrait(u, 'CB') && unitHp(u) > atkAp);
+        if (wall && (b.target === 'player' || (tgt && unitHp(tgt) <= atkAp))) return { card: c, reason: `Redirecting the attack into ${unitName(wall)}, which survives it.` };
+        break;
+      }
+      case 'ST08-013': // Lady Luck
+        if (defending && unitHp(atk.unit) <= (state.players[p].units.some(u => isLinked(u) && hasTrait(u, 'Mafty')) ? 2 : 1)) return { card: c, reason: `Lady Luck destroys ${unitName(atk.unit)} before it deals damage.` };
+        break;
     }
   }
   return null;
@@ -1261,6 +1428,21 @@ function resolveChoice(state: GameState, p: PlayerId, optionId: string | null) {
     case 'lookTop': { const uids = c.ctx.uids as number[]; const top = uids.map(u => ps.deck.find(x => x.uid === u)).filter(Boolean) as CardInstance[]; const pick = passed ? null : (top.find(x => x.uid === idNum(optionId!)) ?? null); lookTopResolve(state, p, top, pick); break; }
     case 'tokenChoice': deployToken(state, p, optionId!); break;
     case 'fromTrash': { const card = ps.trash.find(x => x.uid === idNum(optionId!)); if (card) { ps.trash.splice(ps.trash.indexOf(card), 1); ps.hand.push(card); log(state, `${cardName(card)} returns from the trash to hand.`, 'effect', p); } break; }
+    case 'targetMulti': {
+      if (passed) break;
+      const t = unitFrom(optionId!);
+      if (t) applyUnitEffect(state, p, t.unit, c.ctx.e as UnitEffect, String(c.ctx.source));
+      const chosen = [...(c.ctx.chosen as number[]), idNum(optionId!)];
+      const remaining = (c.ctx.remaining as number) - 1;
+      const pool = (c.ctx.pool as number[]).filter(uid => !chosen.includes(uid));
+      if (remaining > 0 && pool.length) {
+        const opts = pool.map(uid => findUnit(state, uid)).filter(Boolean).map(f => unitOption(state, f!.unit, f!.owner));
+        pushChoice(state, { ...c, options: [...opts, { id: 'pass', label: 'Done' }], optional: true, ctx: { ...c.ctx, chosen, remaining, pool } });
+      }
+      break;
+    }
+    case 'topKeep': { if (optionId === 'bottom') { const top = ps.deck.shift(); if (top) ps.deck.push(top); log(state, `${ps.name} puts the top card on the bottom.`, 'effect', p); } else log(state, `${ps.name} keeps the top card.`, 'effect', p); break; }
+    case 'penelope': { if (!passed) { const card = ps.hand.find(x => x.uid === idNum(optionId!)); if (card) { ps.hand.splice(ps.hand.indexOf(card), 1); ps.deck.push(card); log(state, `Penelope 【Attack】: ${cardName(card)} returns to the bottom of the deck; draw 2.`, 'effect', p); effectDraw(state, p, 2); } } break; }
   }
   if (!state.pending) nextPending(state);
   if (!state.pending && state.battle && !state.winner) {

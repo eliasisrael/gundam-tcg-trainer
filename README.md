@@ -7,7 +7,7 @@ Not affiliated with or endorsed by Bandai. Card names and text are Bandai's prop
 ## What it does
 
 - **Learn**: eight hands-on lessons. Each step highlights the relevant board zone and most steps set a task you must perform (deploy this, pair that, block, play an Action command) before you can continue. Every lesson ends with a quiz that cites the Comprehensive Rules.
-- **Practice**: full games against a heuristic bot using the five starter decks ST01-ST05 (Heroic Beginnings, Wings of Advance, Zeon's Rush, SEED Strike, Iron Bloom), which together cover all five colors, or any custom deck.
+- **Practice**: full games against a heuristic bot using the eight starter decks ST01-ST08 (Heroic Beginnings, Wings of Advance, Zeon's Rush, SEED Strike, Iron Bloom, Clan Unity, Celestial Drive, Flash of Radiance), which together cover all five colors, or any custom deck.
 - **Challenge levels**: Rookie (basic bot, full coach), Pilot (evaluating bot that blocks well and sets up kills with buffs; coach gives hints but never names the best move), Ace (also plays around Blockers, keeps defenders home and counts lethal races; no live coaching, turn reviews afterwards), plus Custom to mix any bot strength with any coach mode. Your win/loss record per level is kept, and the setup screen suggests moving up after a winning streak.
 - **Deck Builder**: pick one or two colors, auto-build a legal 50-card deck from the whole pool, adjust counts, save it, and play it (or hand it to the bot). Each color and pairing comes with a short strategy guide.
 - **Colors lesson**: what Blue, Green, Red, White and Purple each do, their signature mechanics, how to sequence them, and which pairs cover each other's weaknesses. The Coach also gives color-specific pattern reminders during games. The Coach panel comments on the live position: lethal checks, free kills, missed links, unspent Resources, dangerous blockers, burst risk. Each End Turn produces a review of what you missed. Undo is available as a training aid.
@@ -20,13 +20,14 @@ Not affiliated with or endorsed by Bandai. Card names and text are Bandai's prop
 
 ## Rules coverage
 
-The engine implements Comprehensive Rules v1.9.0 (September 2026) for the five starter decks:
+The engine implements Comprehensive Rules v1.9.0 (September 2026) for the eight starter decks:
 
 - Setup: 50-card deck, 10 Resources, 6 Shields, EX Base, EX Resource for Player Two, mulligan.
 - Turn: Start (active step) → Draw → Resource → Main → End (Repair, hand limit 10, cleanup).
 - Main phase: Level and cost, deploying Units/Bases (6-Unit and 1-Base limits), pairing Pilots and Commands-as-Pilots, Link Units, Main commands, Activate·Main effects.
 - Battle: attack → block → action → damage → end. Blocker, High-Maneuver, action-step Action commands (both players, alternating), First Strike ordering, simultaneous damage, battle-scoped AP modifiers and damage immunity, Base and Shield damage, Suppression, Burst, Breach, direct damage win, and battles that end early when a Unit leaves mid-battle.
-- Every card effect in ST01-ST05: Deploy / When Paired / When Linked / Attack / Destroyed triggers, Support, tokens (White Base, Corsica Base, Gouf, Falmel, Striker Pack), EX Resource placement, bounce to hand, hard removal, free deploys (Full Frontal), deck peeks (Char's Zaku II, Saint Gabriel), self-damage engines, trash recursion (Akihiro).
+- Every card effect in ST01-ST08: Deploy / When Paired / When Linked / Attack / Destroyed triggers, Support, tokens (White Base, Corsica Base, Gouf, Falmel, Striker Pack), EX Resource placement, bounce to hand, hard removal, free deploys (Full Frontal), deck peeks (Char's Zaku II, Saint Gabriel), self-damage engines, trash recursion (Akihiro), When Linked triggers, multi-target pumps, turn-scoped damage immunity, attack redirection (Armed Intervention), dynamic Level/cost (Ξ Gundam), start-phase lockdown (Man Hunter), effect-draw triggers (Lane Aim).
+- Copy counts for ST06-ST08 follow the standard starter distribution; the exact retail counts were not published in a source I could verify.
 
 Simplifications: the End-Phase action step is skipped (no card in these decks uses it). EX Resources are spent only after regular Resources.
 
