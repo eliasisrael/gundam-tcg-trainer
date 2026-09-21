@@ -495,7 +495,7 @@ function liveInfo(state: GameState, uid?: number): LiveInfo | undefined {
   const f = findUnit(state, uid);
   if (f) {
     const u = f.unit;
-    const kw = unitKeywords(u) as ReturnType<typeof unitKeywords> & { suppression?: boolean };
+    const kw = unitKeywords(u, state);
     const keywords = [kw.repair && `Repair ${kw.repair}`, kw.breach && `Breach ${kw.breach}`, kw.support && `Support ${kw.support}`, kw.blocker && 'Blocker', kw.firstStrike && 'First Strike', kw.highManeuver && 'High-Maneuver', kw.suppression && 'Suppression'].filter(Boolean) as string[];
     return { ap: unitAp(state, u, f.owner), baseAp: u.card.token ? u.card.token.ap : CARDS[u.card.defId].ap, hp: unitHp(u), maxHp: unitMaxHp(u), damage: u.damage, rested: u.rested, canAttack: f.owner === state.active ? canAttackThisTurn(state, u) : undefined, pilot: u.pilot ? pilotName(u.pilot) : undefined, linked: isLinked(u), keywords, token: !!u.card.token };
   }

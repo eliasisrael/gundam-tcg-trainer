@@ -23,7 +23,7 @@ export const COLORS: Record<Color, ColorGuide> = {
     howToPlay: ['Rest a target first, then attack it: Blue turns active Units into legal targets.', 'Spend every Resource; your Base makes tokens with leftovers.', 'Trade Units happily. You draw more than the opponent, so an even trade favors you.'],
     weaknesses: 'Slow starts. A Red or Green deck that curves out can break Shields before Blue stabilizes.',
     keyCards: ['ST01-001', 'ST01-004', 'ST01-010', 'ST02-006', 'ST02-011', 'ST01-015'],
-    factions: 'Earth Federation, White Base Team, OZ, Penelope\'s Federation (Flash of Radiance)',
+    factions: 'Earth Federation, White Base Team, OZ, Penelope\'s Federation (Flash of Radiance), G Generation (Zeta), Zeon Marines (Char\'s Z\'Gok)',
   },
   Green: {
     color: 'Green', hex: '#2e9e5b', tagline: 'Ramp, big Units, and Breach',
@@ -32,7 +32,7 @@ export const COLORS: Record<Color, ColorGuide> = {
     howToPlay: ['Ramp first, then drop a Unit the opponent cannot answer.', 'Attack Units with Breach: the kill plus the Shield is two-for-one.', 'Protect your investment with Peaceful Timbre or The Blue Giant during battles.'],
     weaknesses: 'Few answers to a wide board of cheap Units. If the ramp card does not show up, the curve is clunky.',
     keyCards: ['ST02-001', 'ST02-002', 'ST02-010', 'ST03-006', 'ST03-011', 'ST03-009'],
-    factions: 'Operation Meteor, Zeon, Maganac Corps, Clan (Red Gundam), Celestial Being (Dynames, Kyrios)',
+    factions: 'Operation Meteor, Zeon, Maganac Corps, Clan (Red Gundam), Celestial Being (Dynames, Kyrios), Neo Zeon Newtypes (Qubeley, Funnels), Full Armor Unicorn',
   },
   Red: {
     color: 'Red', hex: '#d64a3a', tagline: 'Aggression, direct damage, and combat tricks',
@@ -41,7 +41,7 @@ export const COLORS: Record<Color, ColorGuide> = {
     howToPlay: ['Sequence: Support and Base buffs first, then attack with the buffed Unit.', 'Use direct damage on Blockers before you attack, or on a damaged Unit after a battle.', 'Race. Count their Shields and your attackers every turn.'],
     weaknesses: 'Poor recovery. If the opponent stabilizes behind a Base and Blockers, Red runs out of steam.',
     keyCards: ['ST03-001', 'ST03-002', 'ST03-013', 'ST03-010', 'ST04-006', 'ST04-014'],
-    factions: 'Neo Zeon, ZAFT, Clan (GQuuuuuuX), Mafty (Ξ Gundam)',
+    factions: 'Neo Zeon, ZAFT, Clan (GQuuuuuuX), Mafty (Ξ Gundam), White Fang (Epyon), Academy (Aerial, Pharact)',
   },
   White: {
     color: 'White', hex: '#8a8fa8', tagline: 'Defense and disruption',
@@ -50,7 +50,7 @@ export const COLORS: Record<Color, ColorGuide> = {
     howToPlay: ['Hold 【Action】 Commands for the opponent\'s attack; they are worth more there than in your Main Phase.', 'Block when your Blocker kills the attacker or survives; take early Shield hits otherwise.', 'Bounce a Unit that has a Pilot on it: two cards for one.'],
     weaknesses: 'Low damage output. White struggles to close a game and can lose to a deck that simply out-resources it.',
     keyCards: ['ST01-008', 'ST01-014', 'ST04-001', 'ST04-010', 'ST04-013', 'ST04-015'],
-    factions: 'Academy, Earth Alliance, Gjallarhorn',
+    factions: 'Academy, Earth Alliance, Gjallarhorn, G Generation (Barbatos, Phoenix), Titans (The-O, Scirocco)',
   },
   Purple: {
     color: 'Purple', hex: '#8c4ad6', tagline: 'Self-damage as fuel',
@@ -59,22 +59,22 @@ export const COLORS: Record<Color, ColorGuide> = {
     howToPlay: ['Deploy a Barbatos, then damage it yourself before attacking: it hits harder while hurt.', 'Never self-damage a Unit down to 0 HP; count first.', 'Suppression breaks two Shields per hit, so a damaged Barbatos 4th Form ends games quickly.'],
     weaknesses: 'Fragile. Your Units are already damaged, so enemy pings and small attackers finish them. Collapses under early pressure.',
     keyCards: ['ST05-001', 'ST05-002', 'ST05-003', 'ST05-010', 'ST05-013', 'ST05-014'],
-    factions: 'Tekkadan, Teiwaz, Celestial Being (Exia, Virtue)',
+    factions: 'Tekkadan, Teiwaz, Celestial Being (Exia, Virtue), Minerva Squad (Impulse), Marines (Shamblo), Banshee',
   },
 };
 
 export interface Pairing { colors: [Color, Color]; name: string; why: string; starter?: string }
 
 export const PAIRINGS: Pairing[] = [
-  { colors: ['Blue', 'White'], name: 'Control fortress', why: 'Blue\'s card advantage plus White\'s Blockers and AP reduction. Survive, out-draw, then win with Link Units.', starter: 'ST01' },
+  { colors: ['Blue', 'White'], name: 'Control fortress', why: 'Blue\'s card advantage plus White\'s Blockers and AP reduction. Survive, out-draw, then win with Link Units. Generation Pulse adds Development: exile trash cards to power effects.', starter: 'ST01 / ST10' },
   { colors: ['Green', 'Blue'], name: 'Ramp control', why: 'Green ramps into Wing Gundam and Tallgeese; Blue rests targets and reactivates for double attacks.', starter: 'ST02' },
-  { colors: ['Red', 'Green'], name: 'Fast aggro', why: 'The fastest combination. Green bodies and ramp feed Red\'s Support buffs and unblockable finishers. Clan Unity plays it as a link-trigger deck.', starter: 'ST03 / ST06' },
+  { colors: ['Red', 'Green'], name: 'Fast aggro', why: 'The fastest combination. Green bodies and ramp feed Red\'s Support buffs and unblockable finishers. Clan Unity plays it as a link-trigger deck; Silent Barrage as a Funnel deck.', starter: 'ST03 / ST06 / ST13' },
   { colors: ['White', 'Red'], name: 'Disruptive midrange', why: 'White Blockers and bounce keep you alive while Red snipes Units with Aegis and First Strike.', starter: 'ST04' },
   { colors: ['Purple', 'White'], name: 'Controlled chaos', why: 'Purple\'s self-damage engine behind White Blockers, so your damaged Units live long enough to swing.', starter: 'ST05' },
   { colors: ['Blue', 'Red'], name: 'Balanced midrange', why: 'Blue rests a target, Red\'s buffed attacker kills it. Draw engines keep the pressure fueled.', starter: 'ST08' },
-  { colors: ['Purple', 'Blue'], name: 'Stabilized engine', why: 'Blue\'s recovery and draws protect Purple\'s fragile damaged Units.' },
-  { colors: ['Green', 'White'], name: 'Tempo control', why: 'Ramp into big Units, protect them with White\'s action-step tricks and Blockers.' },
-  { colors: ['Purple', 'Red'], name: 'All-in damage', why: 'Every Unit hits hard; Red\'s direct damage and Purple\'s self-damage make explosive but fragile turns.' },
+  { colors: ['Purple', 'Blue'], name: 'Stabilized engine', why: 'Blue\'s recovery and draws protect Purple\'s fragile damaged Units. Aquatic Assault plays it as a wide Marine deck.', starter: 'ST11' },
+  { colors: ['Green', 'White'], name: 'Tempo control', why: 'Ramp into big Units, protect them with White\'s action-step tricks and Blockers. Heavy Dominion plays it with The-O and Full Armor Unicorn.', starter: 'ST14' },
+  { colors: ['Purple', 'Red'], name: 'All-in damage', why: 'Every Unit hits hard; Red\'s direct damage and Purple\'s self-damage make explosive but fragile turns. Destiny Ignition and Raging Onslaught both play it.', starter: 'ST09 / ST12' },
   { colors: ['Purple', 'Green'], name: 'Ramp combo', why: 'Get to Barbatos 4th Form early and start breaking two Shields at a time. Celestial Drive plays it as a trash-filling engine deck.', starter: 'ST07' },
 ];
 

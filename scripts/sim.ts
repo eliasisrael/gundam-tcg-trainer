@@ -33,7 +33,7 @@ for (let g = 0; g < games; g++) {
   // integrity: card conservation
   for (const p of ['p1', 'p2'] as PlayerId[]) {
     const ps = s.players[p];
-    const total = ps.deck.length + ps.hand.length + ps.shields.length + ps.trash.length + ps.units.filter(u => !u.card.token).length + ps.units.filter(u => u.pilot).length + (ps.base && !ps.base.isEx ? 1 : 0) + s.holding.filter(c => c.owner === p).length;
+    const total = ps.deck.length + ps.hand.length + ps.shields.length + ps.trash.length + ps.exile.length + ps.units.filter(u => !u.card.token).length + ps.units.filter(u => u.pilot).length + (ps.base && !ps.base.isEx ? 1 : 0) + s.holding.filter(c => c.owner === p).length;
     if (total !== 50 && !s.winner) console.log('CARD COUNT MISMATCH', g, p, total);
     if (total !== 50 && s.winner && total < 48) console.log('CARD COUNT LOW', g, p, total);
   }

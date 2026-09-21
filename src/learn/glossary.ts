@@ -28,6 +28,9 @@ export const GLOSSARY: [string, string][] = [
   ['Turn phases', 'Start → Draw → Resource → Main → End.'],
   ['【Once per Turn】', 'This effect can be used only once during the turn. Each copy of a card gets its own use.'],
   ['【Pilot】', 'A Command with a 【Pilot】 line may be played as a Pilot instead of cast: pay its cost and pair it with a Unit. Its printed +AP/+HP then apply.'],
+  ['Development X', 'You may exile X cards with the named trait from your trash (remove them from the game). If you do, the effect after ■ resolves.'],
+  ['Exile', 'Removed from the game: the card leaves your trash and cannot come back. Some effects exile as a cost (Development, Banshee) or as a punishment (Pharact).'],
+  ['Unit token', 'A Unit with no card, made by an effect. Bit / Funnel tokens can\'t attack or be paired, but Qubeley can make them fight in a damage-step-only battle.'],
   ['Link requirement', 'The Pilot name or (trait) a Unit needs. A Unit paired with a matching Pilot is a Link Unit and may attack the turn it is deployed.'],
 ];
 
@@ -49,7 +52,9 @@ export function explainCardText(text: string): { term: string; def: string }[] {
     const raw = m[1];
     if (raw.startsWith('(')) continue;
     // "【When Paired･(White Base Team) Pilot】" -> "【When Paired】", but keep "【Activate･Main】" intact.
-    const term = raw.startsWith('【Activate') ? raw : raw.replace(/･.*】$/, '】');
+    const norm = raw.replace(/・/g, '･');
+    const term = norm.startsWith('【Activate') ? norm : norm.replace(/･.*】$/, '】');
+    if (/Development \d/.test(norm)) { const dev = lookup('Development X'); if (dev && !seen.has(dev[0])) { seen.add(dev[0]); out.push({ term: dev[0], def: dev[1] }); } }
     const hit = lookup(term);
     if (!hit || seen.has(hit[0])) continue;
     seen.add(hit[0]);

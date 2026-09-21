@@ -83,7 +83,7 @@ export function UnitCard({ state, unit, owner, onClick, selected, highlight: hl,
   const d = unit.card.token ? undefined : CARDS[unit.card.defId];
   const art = useArt(unit.card.defId);
   const ap = unitAp(state, unit, owner), hp = unitHp(unit), max = unitMaxHp(unit);
-  const kw = unitKeywords(unit) as ReturnType<typeof unitKeywords> & { suppression?: boolean };
+  const kw = unitKeywords(unit, state);
   const baseAp = unit.card.token ? unit.card.token.ap : (d?.ap ?? 0);
   const kws = [kw.repair && `Repair ${kw.repair}`, kw.breach && `Breach ${kw.breach}`, kw.support && `Support ${kw.support}`, kw.blocker && 'Blocker', kw.firstStrike && 'First Strike', kw.highManeuver && 'High-Maneuver', kw.suppression && 'Suppression'].filter(Boolean) as string[];
   // Keywords granted by effects (not printed on the card) are worth showing over the art.

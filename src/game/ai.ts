@@ -3,8 +3,8 @@
 
 import { CARDS } from './cards';
 import {
-  activateOptions, activeResources, attackTargets, canAttackThisTurn, canPlay, commandTargets, findUnit,
-  isLinked, other, playerLevel, unitAp, unitHp, unitKeywords, unitLevel, unitName, whoseDecision, wouldLink,
+  activateOptions, activeResources, attackTargets, canAttackPlayer, canAttackThisTurn, canBePaired, canPlay, commandTargets, findUnit,
+  hasTrait, isLinked, other, pilotNames, playerLevel, trashDeployTargets, unitAp, unitHp, unitKeywords, unitLevel, unitName, whoseDecision, wouldLink,
 } from './engine';
 import type { Action, CardInstance, GameState, PlayerId, UnitState } from './types';
 
@@ -84,6 +84,9 @@ function aiChoose(state: GameState, ai: PlayerId): { id: string | null; reason: 
     }
     case 'topKeep': return { id: 'top', reason: 'Keeping the top card.' };
     case 'penelope': { const pick = opts.find(o => o.id.startsWith('hand:')); return pick && ps.hand.length >= 2 ? { id: pick.id, reason: `Cycling ${pick.label} for two fresh cards.` } : { id: 'pass', reason: 'Keeping my hand.' }; }
+    case 'discardDraw': return { id: 'pass', reason: 'Keeping my hand.' };
+    case 'trashPick': case 'mode': case 'clashPick': case 'top2': case 'deployFromTrash': case 'aerialRest': case 'redGundamToken': case 'finalDuty':
+      return { id: opts[0].id, reason: `${opts[0].label}.` };
     case 'discardOne': { const pick = [...opts].sort((a, b) => CARDS[ps.hand.find(h => h.uid === Number(b.id.split(':')[1]))!.defId].level - CARDS[ps.hand.find(h => h.uid === Number(a.id.split(':')[1]))!.defId].level)[0]; return { id: pick.id, reason: `${pick.label} is the card I can least afford to play soon.` }; }
     default: return { id: opts[0]?.id ?? null, reason: 'First option.' };
   }
@@ -103,7 +106,7 @@ function planBasic(state: GameState, ai: PlayerId): AiDecision {
   if (base && (!ps.base || ps.base.isEx || ps.base.damage > 0)) return say({ type: 'playCard', player: ai, uid: base.uid }, `${CARDS[base.defId].name} gives me a 5 HP wall and its Deploy effect adds a Shield to my hand: a free card.`);
 
   // 2. Pair a pilot with an unpaired unit (prefer link; prefer units that can then attack).
-  const unpaired = ps.units.filter(u => !u.pilot);
+  const unpaired = ps.units.filter(canBePaired);
   if (unpaired.length) {
     const pilots = hand.filter(c => (CARDS[c.defId].type === 'PILOT' && playable(c)) || (CARDS[c.defId].type === 'COMMAND' && CARDS[c.defId].pilotName && playable(c, true)));
     const best = pilots.map(c => ({ c, link: unpaired.some(u => wouldLink(u, c)) })).sort((a, b) => Number(b.link) - Number(a.link))[0];
@@ -120,7 +123,7 @@ function planBasic(state: GameState, ai: PlayerId): AiDecision {
     const scored = units.map(c => {
       const d = CARDS[c.defId];
       let s = d.level * 2 + (d.ap ?? 0) + (d.hp ?? 0);
-      const linkable = pilotsInHand.some(p => d.link?.some(req => CARDS[p.defId].name.includes(req) || (req.startsWith('(') && CARDS[p.defId].traits.includes(req.slice(1, -1)))));
+      const linkable = pilotsInHand.some(p => d.link?.some(req => pilotNames(CARDS[p.defId]).some(n => n.includes(req)) || (req.startsWith('(') && CARDS[p.defId].traits.includes(req.slice(1, -1)))));
       if (linkable && spare >= d.cost + 1 && playerLevel(ps) >= Math.max(...pilotsInHand.map(p => CARDS[p.defId].level))) s += 10;
       if (d.id === 'ST01-004' && op.units.some(u => unitHp(u) <= 2 && !u.rested)) s += 6; // Guntank rests a target
       return { c, s };
@@ -146,6 +149,8 @@ function planBasic(state: GameState, ai: PlayerId): AiDecision {
       const ready = ps.units.some(a => canAttackThisTurn(state, a) && op.units.some(u => u.rested && unitAp(state, a, ai) >= unitHp(u)));
       if (ready && (op.base || op.shields.length)) return say({ type: 'playCard', player: ai, uid: c.uid }, 'I have a kill lined up: Breach 3 will also hit your Base or a Shield.');
     }
+    const generic = genericCommandPlay(state, ai, c);
+    if (generic) return generic;
   }
 
   // 5. Activate·Main effects.
@@ -162,11 +167,13 @@ function planBasic(state: GameState, ai: PlayerId): AiDecision {
     if (o.effectKey === 'tallgeese' && spare >= 4) return say({ type: 'activateMain', player: ai, uid: o.uid, effectKey: o.effectKey }, 'Paying 4 to reactivate Tallgeese lets it attack a second time.');
     if (o.effectKey === 'clanBattle' && readyAttackers.length && !state.turnFlags.attacked) return say({ type: 'activateMain', player: ai, uid: o.uid, effectKey: o.effectKey }, 'Clan Battle: a free +2 AP before my attacks.');
     if (o.effectKey === 'davao' && spare >= 2 && !ps.hand.some(c => CARDS[c.defId].type === 'UNIT' && playable(c))) return say({ type: 'activateMain', player: ai, uid: o.uid, effectKey: o.effectKey }, 'Davao heals a damaged Unit with spare Resources.');
+    const generic = genericActivate(state, ai, o);
+    if (generic) return generic;
   }
 
   // 6. Attacks.
   const attackers = ps.units.filter(u => canAttackThisTurn(state, u));
-  const enemyBlockers = op.units.filter(u => unitKeywords(u).blocker && !u.rested);
+  const enemyBlockers = op.units.filter(u => unitKeywords(u, state).blocker && !u.rested);
   for (const a of attackers) {
     const targets = attackTargets(state, ai, a);
     const ap = unitAp(state, a, ai), hp = unitHp(a);
@@ -187,6 +194,8 @@ function planBasic(state: GameState, ai: PlayerId): AiDecision {
     }
   }
 
+  const leftover = leftoverCommandPlay(state, ai);
+  if (leftover) return leftover;
   // 7. Blocker-only units (Zowort) attack rested units if any kill exists — handled above. Otherwise end.
   const idle = attackers.filter(a => !enemyBlockers.every(b => unitAp(state, b, other(ai)) < unitHp(a) || unitAp(state, a, ai) >= unitHp(b)));
   return say({ type: 'endMain', player: ai }, idle.length ? `Holding ${idle.map(unitName).join(', ')} back: your Blocker would kill it for nothing. Ending my turn.` : spare > 0 ? `Nothing useful left to do with ${spare} Resource(s). Ending my turn.` : 'Resources spent and attacks made. Ending my turn.');
@@ -196,7 +205,7 @@ function planBasic(state: GameState, ai: PlayerId): AiDecision {
 
 /** Rough worth of a unit on the board. */
 function unitValue(state: GameState, u: UnitState, owner: PlayerId): number {
-  return unitLevel(u) * 1.2 + unitAp(state, u, owner) + unitHp(u) + (u.pilot ? 3 : 0) + (isLinked(u) ? 2 : 0) + (unitKeywords(u).blocker ? 1 : 0);
+  return unitLevel(u) * 1.2 + unitAp(state, u, owner) + unitHp(u) + (u.pilot ? 3 : 0) + (isLinked(u) ? 2 : 0) + (unitKeywords(u, state).blocker ? 1 : 0);
 }
 
 interface AttackEval { attacker: UnitState; target: 'player' | number; value: number; kills: boolean; dies: boolean; why: string; almostKill?: number }
@@ -204,7 +213,7 @@ interface AttackEval { attacker: UnitState; target: 'player' | number; value: nu
 /** Outcome of A (with apA) hitting defender D. */
 function duel(state: GameState, ai: PlayerId, A: UnitState, apA: number, D: UnitState) {
   const apD = unitAp(state, D, other(ai));
-  const kw = unitKeywords(A);
+  const kw = unitKeywords(A, state);
   const kills = apA >= unitHp(D);
   const dies = apD >= unitHp(A) && !(kw.firstStrike && kills);
   return { kills, dies, apD };
@@ -215,7 +224,7 @@ function evalAttack(state: GameState, ai: PlayerId, A: UnitState, target: 'playe
   const op = state.players[other(ai)];
   const ace = levelOf(state, ai) === 'ace';
   const apA = unitAp(state, A, ai) + apBonus;
-  const kw = unitKeywords(A) as ReturnType<typeof unitKeywords> & { suppression?: boolean };
+  const kw = unitKeywords(A, state) as ReturnType<typeof unitKeywords> & { suppression?: boolean };
   const shieldArea = op.shields.length + (op.base ? 1 : 0);
   const myValue = unitValue(state, A, ai);
   let value: number, kills = false, dies = false, why = '', almostKill: number | undefined;
@@ -238,7 +247,7 @@ function evalAttack(state: GameState, ai: PlayerId, A: UnitState, target: 'playe
 
   // Rational blocker: the defender picks the block that is worst for me (if it is better for them than not blocking).
   if (!kw.highManeuver) {
-    const blockers = op.units.filter(b => unitKeywords(b).blocker && !b.rested && b.card.uid !== target);
+    const blockers = op.units.filter(b => unitKeywords(b, state).blocker && !b.rested && b.card.uid !== target);
     for (const B of blockers) {
       const d = duel(state, ai, A, apA, B);
       const v = (d.kills ? unitValue(state, B, other(ai)) : 0) - (d.dies ? myValue : 0);
@@ -277,8 +286,8 @@ function planAdvanced(state: GameState, ai: PlayerId): AiDecision {
   const lvl = playerLevel(ps);
 
   // 0. Lethal: enough attackers to punch through blockers, base and shields this turn.
-  const swingers = ps.units.filter(u => canAttackThisTurn(state, u) && u.card.defId !== 'ST01-009');
-  const blockers = op.units.filter(u => unitKeywords(u).blocker && !u.rested).length;
+  const swingers = ps.units.filter(u => canAttackThisTurn(state, u) && canAttackPlayer(u));
+  const blockers = op.units.filter(u => unitKeywords(u, state).blocker && !u.rested).length;
   const needed = op.shields.length + (op.base ? 1 : 0) + 1 + blockers;
   if (swingers.length >= needed && swingers.length) {
     const a = [...swingers].sort((x, y) => unitAp(state, y, ai) - unitAp(state, x, ai))[0];
@@ -297,7 +306,7 @@ function planAdvanced(state: GameState, ai: PlayerId): AiDecision {
   if (linkPlan && ps.units.length < 6) return say({ type: 'playCard', player: ai, uid: linkPlan.u.uid }, `${CARDS[linkPlan.u.defId].name} now, then ${CARDS[linkPlan.p!.defId].pilotName ?? CARDS[linkPlan.p!.defId].name} links it: it attacks this turn.`);
 
   // 3. Pair pilots that link onto existing units (any pilot if nothing else to do with the resource).
-  const unpaired = ps.units.filter(u => !u.pilot);
+  const unpaired = ps.units.filter(canBePaired);
   if (unpaired.length) {
     const cands = hand.filter(c => (CARDS[c.defId].type === 'PILOT' && playable(c)) || (CARDS[c.defId].type === 'COMMAND' && CARDS[c.defId].pilotName && playable(c, true)));
     const link = cands.find(c => unpaired.some(u => wouldLink(u, c)));
@@ -317,8 +326,8 @@ function planAdvanced(state: GameState, ai: PlayerId): AiDecision {
     if (bestPair) return say({ type: 'playCard', player: ai, uid: bestPair[0].uid }, `${CARDS[bestPair[0].defId].name} and ${CARDS[bestPair[1].defId].name} together give more board than ${CARDS[single.defId].name} alone.`);
   }
   if (units.length && ps.units.length < 6) {
-    const enemyAttackers = op.units.filter(u => u.card.defId !== 'ST01-009').length;
-    const myBlockers = ps.units.filter(u => unitKeywords(u).blocker).length;
+    const enemyAttackers = op.units.filter(u => canAttackPlayer(u)).length;
+    const myBlockers = ps.units.filter(u => unitKeywords(u, state).blocker).length;
     const underPressure = enemyAttackers > myBlockers && ps.shields.length + (ps.base ? 1 : 0) <= 4;
     const scored = units.map(c => {
       const d = CARDS[c.defId];
@@ -326,7 +335,7 @@ function planAdvanced(state: GameState, ai: PlayerId): AiDecision {
       if (underPressure && d.keywords?.blocker) s += 6;
       if (d.id === 'ST01-004' && op.units.some(u => unitHp(u) <= 2 && !u.rested)) s += 6;
       if (d.id === 'ST02-002' && lvl < 6) s += 4; // ramp early
-      const pilotsLater = hand.some(p => CARDS[p.defId].type === 'PILOT' && d.link?.some(req => CARDS[p.defId].name.includes(req) || (req.startsWith('(') && CARDS[p.defId].traits.includes(req.slice(1, -1)))));
+      const pilotsLater = hand.some(p => CARDS[p.defId].type === 'PILOT' && d.link?.some(req => pilotNames(CARDS[p.defId]).some(n => n.includes(req)) || (req.startsWith('(') && CARDS[p.defId].traits.includes(req.slice(1, -1)))));
       if (pilotsLater) s += 3;
       return { c, s };
     }).sort((a, b) => b.s - a.s);
@@ -341,7 +350,7 @@ function planAdvanced(state: GameState, ai: PlayerId): AiDecision {
   const buffs: { n: number; act: Action; label: string; uid: number | null }[] = [];
   for (const o of activateOptions(state, ai)) {
     if (!o.ok) continue;
-    if (o.effectKey === 'support') buffs.push({ n: unitKeywords(ps.units.find(u => u.card.uid === o.uid)!).support ?? 0, act: { type: 'activateMain', player: ai, uid: o.uid, effectKey: o.effectKey }, label: o.label, uid: o.uid });
+    if (o.effectKey === 'support') buffs.push({ n: unitKeywords(ps.units.find(u => u.card.uid === o.uid)!, state).support ?? 0, act: { type: 'activateMain', player: ai, uid: o.uid, effectKey: o.effectKey }, label: o.label, uid: o.uid });
     if (o.effectKey === 'vesalius') buffs.push({ n: 1, act: { type: 'activateMain', player: ai, uid: o.uid, effectKey: o.effectKey }, label: 'Vesalius', uid: null });
     if (o.effectKey === 'isaribi') buffs.push({ n: 2, act: { type: 'activateMain', player: ai, uid: o.uid, effectKey: o.effectKey }, label: 'Isaribi', uid: null });
     if (o.effectKey === 'cgs') buffs.push({ n: 1, act: { type: 'activateMain', player: ai, uid: o.uid, effectKey: o.effectKey }, label: 'CGS Mobile Worker', uid: o.uid });
@@ -353,10 +362,11 @@ function planAdvanced(state: GameState, ai: PlayerId): AiDecision {
     if (d.id === 'ST03-012' && playable(c)) buffs.push({ n: 2, act: { type: 'playCard', player: ai, uid: c.uid }, label: 'Indignation', uid: null });
     if (d.id === 'ST05-013' && playable(c)) buffs.push({ n: 3, act: { type: 'playCard', player: ai, uid: c.uid }, label: 'With Iron and Blood', uid: null });
     if (d.id === 'ST06-011' && playable(c)) buffs.push({ n: 2, act: { type: 'playCard', player: ai, uid: c.uid }, label: 'Ruthless Tactics', uid: null });
+    if (d.id === 'ST10-013' && playable(c)) buffs.push({ n: 2, act: { type: 'playCard', player: ai, uid: c.uid }, label: 'Tactical Training', uid: null });
   }
   if (buffs.length && !state.turnFlags.attacked) {
     for (const b of buffs) {
-      const boosted = bestAttacks(state, ai, u => (b.uid === u.card.uid ? 0 : b.n)).filter(x => x.kills && x.value > (best?.value ?? 0) + 1.5 && (b.label !== 'Isaribi' || x.attacker.damage > 0) && (b.label !== 'Asticassia' || isLinked(x.attacker)) && !(b.label === 'With Iron and Blood' && unitHp(x.attacker) <= 1) && !(b.label === 'CGS Mobile Worker' && unitHp(x.attacker) <= 1));
+      const boosted = bestAttacks(state, ai, u => (b.uid === u.card.uid ? 0 : b.n)).filter(x => x.kills && x.value > (best?.value ?? 0) + 1.5 && (b.label !== 'Isaribi' || x.attacker.damage > 0) && (b.label !== 'Asticassia' || isLinked(x.attacker)) && (b.label !== 'Tactical Training' || (hasTrait(x.attacker, 'G Generation') && unitLevel(x.attacker) >= 5)) && (b.label !== 'Ruthless Tactics' || hasTrait(x.attacker, 'Clan')) && !(b.label === 'With Iron and Blood' && unitHp(x.attacker) <= 1) && !(b.label === 'CGS Mobile Worker' && unitHp(x.attacker) <= 1));
       if (boosted.length) {
         preferredTarget = boosted[0].attacker.card.uid;
         return say(b.act, `${b.label} gives ${unitName(boosted[0].attacker)} +${b.n} AP, which turns its attack into a kill (${boosted[0].why}).`);
@@ -372,11 +382,21 @@ function planAdvanced(state: GameState, ai: PlayerId): AiDecision {
       if (t.length) return say({ type: 'playCard', player: ai, uid: c.uid }, 'Siege Ploy rests an active Unit so I can kill it for free this turn.');
     }
     if (d.id === 'ST01-012' && (commandTargets(state, ai, d.id) ?? []).some(u => unitHp(u) === 1)) return say({ type: 'playCard', player: ai, uid: c.uid }, 'Thoroughly Damaged finishes a rested Unit with 1 HP.');
-    if (d.id === 'ST03-013' && (commandTargets(state, ai, d.id) ?? []).some(u => unitHp(u) <= 2 && (u.pilot || unitKeywords(u).blocker || unitLevel(u) >= 3))) return say({ type: 'playCard', player: ai, uid: c.uid }, 'Close Combat removes a Blocker or a valuable Unit with 2 HP or less before I attack.');
+    if (d.id === 'ST03-013' && (commandTargets(state, ai, d.id) ?? []).some(u => unitHp(u) <= 2 && (u.pilot || unitKeywords(u, state).blocker || unitLevel(u) >= 3))) return say({ type: 'playCard', player: ai, uid: c.uid }, 'Close Combat removes a Blocker or a valuable Unit with 2 HP or less before I attack.');
     if (d.id === 'ST05-014' && (commandTargets(state, ai, d.id) ?? []).some(u => u.pilot || unitLevel(u) === 3)) return say({ type: 'playCard', player: ai, uid: c.uid }, 'Fatal Strike destroys your best small Unit outright.');
     if (d.id === 'ST04-013' && (commandTargets(state, ai, d.id) ?? []).some(u => u.pilot)) return say({ type: 'playCard', player: ai, uid: c.uid }, 'Hawk of Endymion bounces a paired Unit: you lose the tempo and the Pilot goes back to hand.');
     if (d.id === 'ST01-013' && (commandTargets(state, ai, d.id) ?? []).some(u => u.damage >= 2 && unitLevel(u) >= 4)) return say({ type: 'playCard', player: ai, uid: c.uid }, 'Healing a damaged big Unit keeps it in the fight.');
     if (d.id === 'ST02-012' && attacks.some(x => x.kills && !x.dies && x.target !== 'player') && (op.base || op.shields.length)) return say({ type: 'playCard', player: ai, uid: c.uid }, 'A kill is lined up: Simultaneous Fire adds Breach 3 to hit your shield area as well.');
+    const generic = genericCommandPlay(state, ai, c);
+    if (generic) return generic;
+  }
+  // Pre-attack activations for the new decks (Banshee First Strike, Red Gundam Breach, Qubeley's Funnels, Impulse swap, Libra).
+  for (const o of activateOptions(state, ai)) {
+    if (!o.ok) continue;
+    if (o.effectKey === 'bansheeFS' && best && best.attacker.card.uid === o.uid && best.target !== 'player' && best.kills && best.dies) return say({ type: 'activateMain', player: ai, uid: o.uid, effectKey: o.effectKey }, `First Strike: Banshee kills ${unitName(findUnit(state, best.target)!.unit)} before it can hit back.`);
+    if (o.effectKey === 'redGundam79' && attacks.some(x => x.attacker.card.uid === o.uid && x.kills && x.target !== 'player') && (op.base || op.shields.length)) return say({ type: 'activateMain', player: ai, uid: o.uid, effectKey: o.effectKey }, 'A Funnel becomes Breach 3: the kill also hits your shield area.');
+    const generic = genericActivate(state, ai, o);
+    if (generic) return generic;
   }
 
   if (best && best.value > 0.6) {
@@ -390,10 +410,10 @@ function planAdvanced(state: GameState, ai: PlayerId): AiDecision {
       }
     }
     // Ace keeps one Blocker home when the opponent could threaten lethal next turn.
-    if (ace && unitKeywords(best.attacker).blocker && best.target === 'player') {
+    if (ace && unitKeywords(best.attacker, state).blocker && best.target === 'player') {
       const myArea = ps.shields.length + (ps.base ? 1 : 0);
-      const theirAttackers = op.units.filter(u => u.card.defId !== 'ST01-009').length;
-      const otherBlockers = ps.units.filter(u => u !== best.attacker && unitKeywords(u).blocker && !u.rested).length;
+      const theirAttackers = op.units.filter(u => canAttackPlayer(u)).length;
+      const otherBlockers = ps.units.filter(u => u !== best.attacker && unitKeywords(u, state).blocker && !u.rested).length;
       if (theirAttackers > myArea && otherBlockers === 0 && myArea <= 3) {
         const alt = attacks.find(x => x.attacker !== best.attacker && x.value > 0.6);
         if (alt) return say({ type: 'attack', player: ai, attackerUid: alt.attacker.card.uid, target: alt.target }, `${unitName(alt.attacker)} attacks (${alt.why}); ${unitName(best.attacker)} stays home as a Blocker because you threaten lethal.`);
@@ -411,9 +431,74 @@ function planAdvanced(state: GameState, ai: PlayerId): AiDecision {
     if (o.effectKey === 'archangel' && spare >= 2) return say({ type: 'activateMain', player: ai, uid: o.uid, effectKey: o.effectKey }, 'Archangel stands my Blocker back up to defend.');
     if (o.effectKey === 'davao' && spare >= 2) return say({ type: 'activateMain', player: ai, uid: o.uid, effectKey: o.effectKey }, 'Davao heals a damaged Unit with spare Resources.');
   }
-  // Cheap selection commands when nothing else to do
+  // Cheap selection / draw / ramp commands when nothing else to do
   for (const c of hand) { const d = CARDS[c.defId]; if ((d.id === 'ST06-012' || d.id === 'ST07-014') && playable(c) && spare >= 1) return say({ type: 'playCard', player: ai, uid: c.uid }, `${d.name} digs for a Unit or Pilot.`); }
+  const leftover = leftoverCommandPlay(state, ai);
+  if (leftover) return leftover;
   const held = ps.units.filter(u => canAttackThisTurn(state, u));
   const worst = attacks[0];
   return say({ type: 'endMain', player: ai }, held.length && worst ? `Holding ${held.map(unitName).join(', ')}: the best attack available (${worst.why}) is not worth it. Ending my turn.` : spare > 0 ? `Nothing useful left for ${spare} Resource(s). Ending my turn.` : 'Ending my turn.');
+}
+
+
+// ---------------- Shared heuristics for the ST09-ST14 cards ----------------
+
+/** Main-phase plays for removal / recursion commands that both planners share. Returns null when the card is not worth playing now. */
+function genericCommandPlay(state: GameState, ai: PlayerId, c: CardInstance): AiDecision | null {
+  const d = CARDS[c.defId];
+  const ps = state.players[ai], op = state.players[other(ai)];
+  if (!canPlay(state, ai, c).ok) return null;
+  const say = (reason: string): AiDecision => ({ action: { type: 'playCard', player: ai, uid: c.uid }, reason });
+  const t = commandTargets(state, ai, d.id) ?? [];
+  const worth = (u: UnitState) => u.pilot || unitLevel(u) >= 4 || unitKeywords(u, state).blocker;
+  const spare = activeResources(ps);
+  switch (d.id) {
+    case 'ST09-009': if (t.some(worth)) return say('Giant Killing destroys an active Unit outright: a Blocker or a paired Unit is worth 3 Resources.'); break;
+    case 'GD01-111': if (t.some(u => unitHp(u) <= 3 && (worth(u) || unitLevel(u) >= 3))) return say('Battle of Aces finishes a damaged Unit for 2.'); break;
+    case 'ST13-015': if (t.some(u => unitHp(u) <= 3 && worth(u))) return say('Three Units in my trash become 3 damage: that destroys a Unit that matters.'); break;
+    case 'ST11-013': if (t.some(u => u.pilot)) return say('Poorly Planned Offensive bounces a paired Unit and draws me a card.'); break;
+    case 'GD02-110': { const cands = trashDeployTargets(state, ai, spare - d.cost); const best = [...cands].sort((a, b) => CARDS[b.defId].level - CARDS[a.defId].level)[0]; if (best && ps.units.length < 6 && (CARDS[best.defId].level >= 4 || best.defId === 'ST09-006')) return say(`Awakened Power redeploys ${CARDS[best.defId].name} from my trash${best.defId === 'ST09-006' ? ', and Sword Impulse from the trash destroys a small Unit' : ''}.`); break; }
+    case 'ST11-015': if (ps.units.length < 6) return say('A Twinkle from the Abyss brings a Marine back from the trash for 2.'); break;
+    case 'ST12-013': { // The Final Victor: my best unit vs their forced pick
+      if (!ps.units.length || !op.units.length) break;
+      const A = [...ps.units].sort((a, b) => unitAp(state, b, ai) + unitHp(b) - unitAp(state, a, ai) - unitHp(a))[0];
+      const apA = unitAp(state, A, ai);
+      const counter = op.units.some(u => unitAp(state, u, other(ai)) >= unitHp(A) && unitHp(u) > apA);
+      const weakest = [...op.units].sort((a, b) => unitLevel(a) + unitHp(a) - unitLevel(b) - unitHp(b))[0];
+      if (!counter && apA >= unitHp(weakest) && (worth(weakest) || unitLevel(weakest) >= 3)) return say(`The Final Victor: ${unitName(A)} forces a battle no Unit of yours wins, and even your weakest Unit dies to it.`);
+      break;
+    }
+    case 'ST14-013': { const killable = op.units.filter(u => !u.rested && unitHp(u) <= 3 && ps.units.some(a => canAttackThisTurn(state, a) && unitAp(state, a, ai) >= unitHp(u))); if (killable.length) return say('Natural Talent rests small active Units so my attackers can kill them this turn.'); break; }
+    case 'ST10-013': if (t.some(u => u.damage >= 2)) return say('Tactical Training heals my big G Generation Unit and adds AP for the turn.'); break;
+  }
+  return null;
+}
+
+/** Activate·Main effects from the new decks, for either planner. */
+function genericActivate(state: GameState, ai: PlayerId, o: { uid: number; effectKey: string; ok: boolean }): AiDecision | null {
+  if (!o.ok) return null;
+  const ps = state.players[ai], op = state.players[other(ai)];
+  const act: Action = { type: 'activateMain', player: ai, uid: o.uid, effectKey: o.effectKey };
+  switch (o.effectKey) {
+    case 'libra': return { action: act, reason: 'Libra is free: 1 damage to a small Unit after my paired Unit scored a kill.' };
+    case 'qubeley': { const tok = ps.units.find(u => u.card.token); const kill = tok && op.units.find(u => unitHp(u) <= unitAp(state, tok, ai)); if (kill) return { action: act, reason: `A Funnel battles ${unitName(kill)} (${unitHp(kill)} HP) and destroys it, active or not.` }; break; }
+    case 'impulse': { const swap = ps.trash.find(c => CARDS[c.defId].type === 'UNIT' && CARDS[c.defId].name.includes('Impulse Gundam') && CARDS[c.defId].level >= 4); const smallEnemy = op.units.some(u => unitLevel(u) <= 3); if (swap && (activeResources(ps) >= 4 || !ps.hand.some(c => CARDS[c.defId].type === 'UNIT' && canPlay(state, ai, c).ok))) return { action: act, reason: `Impulse Gundam swaps into ${CARDS[swap.defId].name} from my trash${swap.defId === 'ST09-006' && smallEnemy ? ', which destroys a small Unit on the way in' : ''}.` }; break; }
+  }
+  return null;
+}
+
+/** Draw, ramp and token commands for leftover Resources. */
+function leftoverCommandPlay(state: GameState, ai: PlayerId): AiDecision | null {
+  const ps = state.players[ai];
+  const spare = activeResources(ps);
+  for (const c of ps.hand) {
+    const d = CARDS[c.defId];
+    if (!canPlay(state, ai, c).ok) continue;
+    const say = (reason: string): AiDecision => ({ action: { type: 'playCard', player: ai, uid: c.uid }, reason });
+    if (d.id === 'ST14-015' && spare >= 4) return say('Battlefield Emotions ramps me a Resource and refunds one.');
+    if ((d.id === 'GD01-118' || d.id === 'ST10-014') && ps.hand.length <= 6) return say(`${d.name} refills my hand.`);
+    if (d.id === 'ST13-013' && ps.units.length <= 4) return say("I'm a Newtype makes two Funnels: fuel for Qubeley and Red Gundam.");
+    if (d.id === 'ST13-014' && ps.units.some(u => u.card.token || (unitHp(u) <= 1 && !u.pilot)) && ps.deck.length > 8) return say('Final Duty trades a token for a real Unit from my top 4.');
+  }
+  return null;
 }

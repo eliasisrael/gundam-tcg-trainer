@@ -81,6 +81,7 @@ function boardTurn3(): GameState {
   addResources(s, 'p1', 3); addResources(s, 'p2', 3);
   for (const r of s.players.p1.resources) r.rested = false;
   setHand(s, 'p1', ['ST01-005', 'ST01-003', 'ST01-010', 'ST01-001', 'ST01-013', 'ST01-015']);
+  setHand(s, 'p2', ['ST02-005', 'ST02-003']); // keep the bot predictable: no action-step tricks in the teaching board
   putUnit(s, 'p2', 'ST02-007', { rested: true });      // Leo 2/2 rested
   putUnit(s, 'p2', 'ST02-009', { rested: false });     // Tragos blocker 1/1
   s.log = [];

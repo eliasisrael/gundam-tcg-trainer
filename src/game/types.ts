@@ -14,6 +14,7 @@ export interface Keywords {
   blocker?: boolean;
   firstStrike?: boolean;
   highManeuver?: boolean;
+  suppression?: boolean;
 }
 
 export interface CardDef {
@@ -36,6 +37,8 @@ export interface CardDef {
   timing?: ('Main' | 'Action')[];
   /** Short teaching blurb: why this card matters, how to use it. */
   tip?: string;
+  /** "This card's name is also treated as [X]" (Milliardo Peacecraft, Ple-Twelve). */
+  alsoNamed?: string[];
 }
 
 export interface TokenDef {
@@ -45,6 +48,9 @@ export interface TokenDef {
   hp: number;
   traits: string[];
   keywords?: Keywords;
+  /** Bit / Funnel tokens: can't attack and can't be paired with a Pilot. */
+  cantAttack?: boolean;
+  cantPair?: boolean;
 }
 
 export interface CardInstance {
@@ -73,6 +79,12 @@ export interface UnitState {
     cantAttackThisTurn?: boolean;
     /** Can't receive battle damage from enemy Units of this Lv. or lower this turn (Fierce Unity). */
     immuneFromLvMax?: number;
+    /** Enemy Units can't choose this Unit as their attack target this turn (The Orca of Red Sea). */
+    untargetable?: boolean;
+    /** Battle damage from enemy Units is reduced by this much this turn (Loni Garvey). */
+    battleDamageReduce?: number;
+    /** Can't attack the enemy player this turn (Zeta Gundam (EX) after breaking a shield). */
+    cantTargetPlayer?: boolean;
   };
   /** Won't be set active during its owner's next start phase (Jegan Man Hunter). Survives cleanup. */
   skipNextActivate?: boolean;
@@ -102,6 +114,8 @@ export interface PlayerState {
   units: UnitState[];
   resources: ResourceState[];
   trash: CardInstance[];
+  /** Cards exiled from the game (Development costs, Banshee, Pharact). */
+  exile: CardInstance[];
   redrew: boolean;
   isAI: boolean;
 }
@@ -124,6 +138,10 @@ export interface BattleState {
   /** Action-step bookkeeping */
   passes?: number;
   actor?: PlayerId;
+  /** Wise Leader's Pride: this Unit destroys a 2-or-less-AP enemy Unit when it kills in battle this battle. */
+  wiseLeaderUid?: number;
+  /** Banshee: <Suppression> granted for this battle only. */
+  suppressionUids?: number[];
 }
 
 export type ChoiceOption = {
@@ -165,7 +183,7 @@ export interface GameState {
   winner: PlayerId | null;
   loseReason?: string;
   nextUid: number;
-  /** Turn-scoped flags */
+  /** Turn-scoped flags (string keys; per-player flags are suffixed with the player id) */
   turnFlags: Record<string, boolean>;
   /** Mulligan phase before turn 1 */
   setupStage: 'mulligan' | 'playing';

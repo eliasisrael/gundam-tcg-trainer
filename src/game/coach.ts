@@ -107,7 +107,7 @@ export function coachTips(state: GameState, me: PlayerId): Tip[] {
 
   // Lethal
   if (opShieldArea === 0 && attackers.length) tips.push(ruleTip('urgent', 'LETHAL: attack the player', `${op.name} has no Shields and no Base. Any battle damage to the player wins the game. Attack with ${unitName(attackers[0])}!`, 'win'));
-  else if (op.base === null && attackers.length >= op.shields.length && op.shields.length > 0 && !op.units.some(u => unitKeywords(u).blocker && !u.rested)) {
+  else if (op.base === null && attackers.length >= op.shields.length && op.shields.length > 0 && !op.units.some(u => unitKeywords(u, state).blocker && !u.rested)) {
     tips.push(ruleTip('good', 'Shields almost gone', `${op.shields.length} Shield(s) left and you have ${attackers.length} attackers. Each attack with 1+ AP removes exactly one Shield.`, 'shields'));
   }
 
@@ -151,9 +151,9 @@ export function coachTips(state: GameState, me: PlayerId): Tip[] {
   // Bad attacks warning
   for (const a of ps.units.filter(u => canAttackThisTurn(state, u))) {
     const ap = unitAp(state, a, me), hp = unitHp(a);
-    const blockers = op.units.filter(u => unitKeywords(u).blocker && !u.rested);
+    const blockers = op.units.filter(u => unitKeywords(u, state).blocker && !u.rested);
     const deadly = blockers.find(b => unitAp(state, b, other(me)) >= hp && ap < unitHp(b));
-    if (deadly && !unitKeywords(a).highManeuver) { tips.push(ruleTip('warn', `Careful attacking with ${unitName(a)}`, `${unitName(deadly)} has <Blocker>: it can redirect the attack to itself, kill your ${hp} HP Unit, and survive your ${ap} AP.`, 'blocker')); break; }
+    if (deadly && !unitKeywords(a, state).highManeuver) { tips.push(ruleTip('warn', `Careful attacking with ${unitName(a)}`, `${unitName(deadly)} has <Blocker>: it can redirect the attack to itself, kill your ${hp} HP Unit, and survive your ${ap} AP.`, 'blocker')); break; }
   }
 
   // Unspent resources
@@ -170,7 +170,7 @@ export function coachTips(state: GameState, me: PlayerId): Tip[] {
   if (tooHigh.length === ps.hand.length && ps.hand.length) tips.push(ruleTip('warn', 'Hand is above your Level', `You are Lv.${playerLevel(ps)} (one Resource per turn). Every card in hand needs a higher Level. Consider lower-cost Units and Bases when redrawing next game.`, 'curve'));
 
   // Blocker held back
-  const myBlockers = ps.units.filter(u => unitKeywords(u).blocker && !u.rested);
+  const myBlockers = ps.units.filter(u => unitKeywords(u, state).blocker && !u.rested);
   if (myBlockers.length && op.units.length >= 2 && ps.shields.length <= 3) tips.push(ruleTip('info', 'Keep a Blocker active', `${unitName(myBlockers[0])} can only block while active. If it attacks, it is rested and cannot protect you next turn.`, 'blocker'));
 
   // Base
@@ -204,7 +204,7 @@ function colorTips(state: GameState, me: PlayerId): Tip[] {
     const sup = acts.find(o => o.effectKey === 'support' || o.effectKey === 'vesalius');
     if (sup && attackers.length && !state.turnFlags.attacked) out.push(ruleTip('good', 'Red pattern: buff, then swing', `${sup.label}. Activate it before attacking so the AP bonus counts in the battle.`, 'color-red'));
     const dmg = ps.hand.find(c => c.defId === 'ST03-013' && canPlay(state, me, c).ok);
-    const blocker = op.units.find(u => unitKeywords(u).blocker && !u.rested && unitHp(u) <= 2);
+    const blocker = op.units.find(u => unitKeywords(u, state).blocker && !u.rested && unitHp(u) <= 2);
     if (dmg && blocker) out.push(ruleTip('info', 'Clear the Blocker first', `Close Combat kills ${unitName(blocker)} before your attacks, so nothing can redirect them.`, 'color-red'));
   }
   if (colors.includes('Purple')) {
@@ -222,9 +222,9 @@ function colorTips(state: GameState, me: PlayerId): Tip[] {
     const ex = ps.resources.filter(r => r.isEx).length;
     const big = ps.hand.filter(c => CARDS[c.defId].level >= 5 && canPlay(state, me, c).ok);
     if (ex && big.length) out.push(ruleTip('good', 'Green pattern: cash in the ramp', `Your EX Resource${ex > 1 ? 's' : ''} put${ex > 1 ? '' : 's'} you at Lv.${playerLevel(ps)} early. ${CARDS[big[0].defId].name} is playable now, ahead of schedule.`, 'color-green'));
-    const breacher = attackers.find(u => unitKeywords(u).breach);
+    const breacher = attackers.find(u => unitKeywords(u, state).breach);
     const kill = breacher && op.units.find(t => t.rested && unitAp(state, breacher, me) >= unitHp(t));
-    if (breacher && kill && (op.base || op.shields.length)) out.push(ruleTip('good', 'Breach for two-for-one', `${unitName(breacher)} kills ${unitName(kill)} and <Breach ${unitKeywords(breacher).breach}> then hits their ${op.base ? 'Base' : 'top Shield'}.`, 'color-green'));
+    if (breacher && kill && (op.base || op.shields.length)) out.push(ruleTip('good', 'Breach for two-for-one', `${unitName(breacher)} kills ${unitName(kill)} and <Breach ${unitKeywords(breacher, state).breach}> then hits their ${op.base ? 'Base' : 'top Shield'}.`, 'color-green'));
   }
   if (colors.includes('Blue')) {
     const rester = ps.hand.find(c => ['ST01-004', 'ST01-010', 'ST02-014'].includes(c.defId) && canPlay(state, me, c).ok);
@@ -245,10 +245,10 @@ export function reviewTurn(state: GameState, me: PlayerId): Tip[] {
   for (const u of idle) {
     const targets = attackTargets(state, me, u);
     const opUnits = state.players[other(me)].units;
-    const deadlyBlocker = opUnits.some(b => unitKeywords(b).blocker && !b.rested && unitAp(state, b, other(me)) >= unitHp(u));
+    const deadlyBlocker = opUnits.some(b => unitKeywords(b, state).blocker && !b.rested && unitAp(state, b, other(me)) >= unitHp(u));
     const safeKill = targets.some(t => t.id !== 'player' && unitAp(state, u, me) >= unitHp(findUnit(state, t.id as number)!.unit) && unitAp(state, findUnit(state, t.id as number)!.unit, other(me)) < unitHp(u));
     if (safeKill) out.push(ruleTip('warn', `${unitName(u)} skipped a free kill`, 'It could have destroyed a rested enemy Unit and survived.', 'combat'));
-    else if (targets.some(t => t.id === 'player') && !deadlyBlocker && !unitKeywords(u).blocker) out.push(ruleTip('info', `${unitName(u)} did not attack`, 'No enemy Blocker could punish it. Pressure on Shields adds up, and the Unit re-activates next turn anyway.', 'combat'));
+    else if (targets.some(t => t.id === 'player') && !deadlyBlocker && !unitKeywords(u, state).blocker) out.push(ruleTip('info', `${unitName(u)} did not attack`, 'No enemy Blocker could punish it. Pressure on Shields adds up, and the Unit re-activates next turn anyway.', 'combat'));
   }
   const unpaired = ps.units.filter(u => !u.pilot);
   const linkable = unpaired.some(u => ps.hand.some(c => wouldLink(u, c) && (CARDS[c.defId].type === 'PILOT' || CARDS[c.defId].pilotName) && CARDS[c.defId].level <= playerLevel(ps)));
